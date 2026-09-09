@@ -1006,7 +1006,10 @@ class GenosDotsOCRLayoutModel(BasePageModel):
             return None, None
 
     def _get_tableformer(self):
-        """TableStructureModel(TableFormer) lazy 생성. 생성 실패 시 None.
+        """TableFormer 원격 클라이언트 lazy 생성. 생성 실패 시 None.
+
+        TableFormer는 전처리기 파드 안에서 로드하지 않는다 — 별도 파드
+        (genon/serving/tableformer)를 HTTP로 호출한다(CLAUDE.md TODO #1).
 
         페이지가 동시 처리되므로 lock + 더블체크로 생성한다. (락 없이 None 중간상태를
         다른 워커가 보면 그 페이지의 빈 테이블 보강을 영구히 건너뛰게 됨)"""
@@ -1017,13 +1020,13 @@ class GenosDotsOCRLayoutModel(BasePageModel):
                 return self._tableformer_model
             model = None
             try:
-                from docling.models.table_structure_model import TableStructureModel
+                from docling.models.table_structure_remote_model import (
+                    TableStructureRemoteModel,
+                )
 
-                model = TableStructureModel(
+                model = TableStructureRemoteModel(
                     enabled=True,
-                    artifacts_path=getattr(self.pipeline_options, "artifacts_path", None),
                     options=self.pipeline_options.table_structure_options,
-                    accelerator_options=self.pipeline_options.accelerator_options,
                 )
             except Exception:
                 _log.warning("TableFormer 생성 실패 → 빈 테이블 보강 생략", exc_info=True)

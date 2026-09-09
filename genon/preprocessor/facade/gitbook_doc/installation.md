@@ -88,9 +88,9 @@ gunzip -c doc-parser-preprocessor-2.2.0.tar.gz | docker load
   - 단계별 상세 절차(레지스트리 push·DB 등록, 폐쇄망 사이트에서 `docker save → load → register_image.sh` 운반 흐름)는 사내 원본 저장소 `genon/README.md` 의 "C. 레지스트리 등록 (6~7번)" 과 "D. 사이트 배포 (8번)" 참고.
 - 빌드 정책·variant 의미·태그 규칙 등 빌드 측 상세는 사내 원본 저장소 `genon/README.md` 의 "전처리기 빌드 및 등록" 참고.
 
-### 2.2 PaddleOCR · dots.ocr vllm 서빙 (직접 빌드 후 사이트 운반)
+### 2.2 PaddleOCR · dots.ocr vllm · TableFormer 서빙 (직접 빌드 후 사이트 운반)
 
-OCR 엔진(Paddle)과 Layout 모델 서빙(dots.ocr vllm)은 **사내 운영계 도커 레지스트리에 올라가지 않습니다**. 빌드 과정에서 HuggingFace·GitHub 등 외부 자원을 받아야 하기 때문에, 폐쇄망인 사이트에서 빌드하는 건 일반적으로 안 됩니다.
+OCR 엔진(Paddle), Layout 모델 서빙(dots.ocr vllm), TableFormer(표 구조 인식)는 **사내 운영계 도커 레지스트리에 올라가지 않습니다**. 빌드 과정에서 HuggingFace·GitHub 등 외부 자원을 받아야 하기 때문에, 폐쇄망인 사이트에서 빌드하는 건 일반적으로 안 됩니다.
 
 대신, **엔지니어가 외부 자원에 접근 가능한 환경에서 이미지를 직접 빌드한 뒤, 결과 이미지를 사이트로 직접 운반**해 GenOS에 등록하는 방식으로 진행합니다. (Doc Parser 본체의 2.1 은 "사내 운영계 레지스트리 pull → 사이트 운반" 이고, 이쪽은 "직접 빌드 → 사이트 운반" 이라는 차이.)
 
@@ -104,6 +104,12 @@ OCR 엔진(Paddle)과 Layout 모델 서빙(dots.ocr vllm)은 **사내 운영계 
 - 모델 다운로드 + vllm 서빙 명령어 옵션 안내: 사내 원본 저장소 `genon/README.md` 의 "dots mocr vllm 서빙"
 - GenOS 모델서빙으로 등록하는 일반 절차(vllm 사용): [Multi-Modal Serving 가이드 (GitBook)](https://genos-docs.gitbook.io/default/advanced-tutorials/guides/serving/multi-modal-serving)
 - 위 안내를 따라 빌드·실행한 vllm 서버를 GenOS 모델서빙으로 등록한 뒤, 그 **서빙 ID**를 메모해 두세요. 다음 2.3 절의 `<LAYOUT_SERVING_ID>` 자리에 들어갑니다.
+
+**TableFormer (표 구조 인식)**
+
+- 표 구조 인식(row/col span, header 판별 등)은 전처리기 파드 안에서 로드하지 않고, 항상 이 파드를 HTTP로 호출합니다 — `genos_layout`(기본 Layout 모드)에서 dots.ocr가 표 HTML을 못 준 빈 테이블을 보강하는 fallback도 동일하게 이 파드를 씁니다.
+- 빌드/배포 가이드: `genon/serving/tableformer/README.md`
+- 빌드 후 클러스터 내부에서 접근 가능한 주소(예: `http://doc-parser-tableformer-service:8080/table/structure` 형태)를 메모해 두세요. 5단계 YAML 의 `pdf_pipeline.tableformer_remote.endpoint` 에 해당 주소를 입력해야 합니다.
 
 ### 2.3 모델 서빙 ID 확인
 
@@ -179,6 +185,7 @@ dev yaml 안의 `<...>` 자리표는 다음과 같이 채웁니다.
 - **`<LAYOUT_SERVING_ID>`** → 2.3 에서 메모한 dots.ocr 서빙 ID
 - **`<ENRICHMENT_SERVING_ID>`** → 2.3 에서 메모한 LLM 서빙 ID. **`enrichment` 의 `toc` / `metadata` / `image_description` 세 항목 URL에 모두 동일한 ID를 사용합니다.** (이미지 설명용 별도 VLM이 등록된 사이트라도 토대 구조는 같음 — 운영 표준은 셋이 같은 서빙 ID 공유)
 - **`<OCR_ENDPOINT>`** → 2.2 에서 빌드·배포한 사이트 PaddleOCR 서버의 클러스터 내부 접근 주소
+- **`<TABLEFORMER_ENDPOINT>`** → 2.2 에서 빌드·배포한 사이트 TableFormer 파드의 클러스터 내부 접근 주소(`pdf_pipeline.tableformer_remote.endpoint`). TableFormer는 전처리기 파드 안에서 로드하지 않으므로 이 자리는 항상 채워야 합니다.
 
 기타 옵션(`ocr_mode`, `layout.genos_layout.page_batch_size`, enrichment 프롬프트 파일 등)은 기본값을 그대로 두면 됩니다. 사이트별로 튜닝이 필요한 항목과 그 의미는 [intelligent_processor.md](intelligent_processor.md) 와 [parser_processor.md](parser_processor.md) 참고.
 

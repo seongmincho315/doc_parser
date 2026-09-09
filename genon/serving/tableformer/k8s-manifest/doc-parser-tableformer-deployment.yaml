@@ -1,0 +1,61 @@
+# GPU 변형. genon/serving/paddle/k8s-manifest/doc-parser-ocr-deployment.yaml 과 동일 패턴.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: doc-parser-tableformer-deployment
+  namespace: llmops
+  labels:
+    app: doc-parser-tableformer
+spec:
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: doc-parser-tableformer
+  template:
+    metadata:
+      labels:
+        app: doc-parser-tableformer
+    spec:
+      serviceAccountName: llmops
+      containers:
+        - name: doc-parser-tableformer
+          image: mncregistry:30500/doc-parser-tableformer:0.0.0
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8080
+          env:
+            - name: TZ
+              value: Asia/Seoul
+            - name: PROFILE
+              value: prod
+            - name: TABLEFORMER_MODE
+              value: accurate       # "accurate"(default) | "fast"
+            - name: TABLEFORMER_DEVICE
+              value: cuda           # 이 매니페스트는 GPU 전용. CPU만 쓰려면 -cpu.yaml 사용.
+            - name: TABLEFORMER_MAX_CONCURRENCY
+              value: "1"            # 동시 추론 1개로 직렬화 — GPU OOM 방지(CLAUDE.md TODO #1)
+          resources:
+            limits:
+              nvidia.com/gpu: 1
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 20
+            periodSeconds: 15
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: doc-parser-tableformer-service
+  namespace: llmops
+  labels:
+    app: doc-parser-tableformer
+spec:
+  selector:
+    app: doc-parser-tableformer
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080

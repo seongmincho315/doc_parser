@@ -50,7 +50,7 @@ class BaseOptions(BaseModel):
 class TableStructureModelType(str, Enum):
     """Enum of valid table structure model types."""
 
-    TABLEFORMER = "tableformer"
+    TABLEFORMER = "tableformer"  # 별도 파드로 서빙되는 TableFormer 호출 (인프로세스 로딩 없음)
     VLM = "vlm"
     DOTSOCR = "dotsocr"
 
@@ -86,6 +86,14 @@ class VlmTableStructureOptions(BaseModel):
     prompt_bbox_scale: int = 1024
 
 
+class RemoteTableFormerOptions(BaseModel):
+    """Options for TableFormer served as a separate pod (like PaddleOcrOptions)."""
+
+    endpoint: str = ""
+    timeout: int = 60  # seconds
+    headers: Dict[str, str] = {}
+
+
 class TableStructureOptions(BaseModel):
     """Options for table structure model selection and configuration."""
 
@@ -101,6 +109,9 @@ class TableStructureOptions(BaseModel):
     mode: TableFormerMode = TableFormerMode.ACCURATE
     vlm_table_structure_options: VlmTableStructureOptions = (
         VlmTableStructureOptions()
+    )
+    tableformer_remote_options: RemoteTableFormerOptions = (
+        RemoteTableFormerOptions()
     )
 
 

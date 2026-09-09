@@ -157,6 +157,49 @@ def resolve_pdf_basics(pdf_cfg: dict) -> PdfBasics:
 
 
 @dataclass(frozen=True)
+class TableStructureSettings:
+    """TableFormer 파드(genon/serving/tableformer) 호출 설정.
+
+    TableFormer는 전처리기 파드 안에서 로드하지 않는다 — 항상 이 엔드포인트로 HTTP 호출한다
+    (CLAUDE.md TODO #1). genos_layout(기본 모드)에서도 빈 테이블 보강 fallback이 이 엔드포인트를
+    쓰므로, 이 값은 사실상 모든 사이트 배포에서 지정이 필요하다.
+    """
+
+    endpoint: str
+    timeout: int
+
+
+def resolve_table_structure_settings(pdf_cfg: dict) -> TableStructureSettings:
+    """pdf_pipeline.tableformer_remote 섹션에서 TableFormer 파드 엔드포인트를 해석한다.
+
+    엔드포인트 정식 위치는 pdf_pipeline.tableformer_remote.endpoint 다. 없으면 빈 문자열이고
+    경고를 남긴다(resolve_layout_settings의 endpoint 경고 관례와 동일).
+    """
+    pdf_cfg = as_dict(pdf_cfg)
+    remote_cfg = as_dict(pdf_cfg.get("tableformer_remote"))
+
+    endpoint = remote_cfg.get("endpoint") or ""
+    if not endpoint:
+        _log.warning(
+            "[DocumentProcessor] pdf_pipeline.tableformer_remote.endpoint 가 비어 있습니다. "
+            "TableFormer는 별도 파드로만 서빙되므로 사이트 배포 시 yaml 에 반드시 지정하세요."
+        )
+
+    timeout = parse_optional_int(remote_cfg.get("timeout"), "pdf_pipeline.tableformer_remote.timeout")
+    if timeout is None or timeout <= 0:
+        timeout = 60
+
+    return TableStructureSettings(endpoint=endpoint, timeout=timeout)
+
+
+def apply_table_structure_settings(pipe_line_options, settings: TableStructureSettings) -> None:
+    """해석한 TableFormer 파드 설정을 PdfPipelineOptions 에 적용한다."""
+    remote = pipe_line_options.table_structure_options.tableformer_remote_options
+    remote.endpoint = settings.endpoint
+    remote.timeout = settings.timeout
+
+
+@dataclass(frozen=True)
 class LayoutSettings:
     """layout 섹션에서 나오는 값들. genos_layout(DotsOCR) 호출·생성 파라미터 포함.
 

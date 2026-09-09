@@ -32,7 +32,7 @@ from docling.models.page_preprocessing_model import (
 )
 from docling.models.picture_description_base_model import PictureDescriptionBaseModel
 from docling.models.readingorder_model import ReadingOrderModel, ReadingOrderOptions
-from docling.models.table_structure_model import TableStructureModel
+from docling.models.table_structure_remote_model import TableStructureRemoteModel
 from docling.models.genos_vlm_table_structure_model import GenosVlmTableStructureModel
 from docling.models.genos_dots_ocr_layout_model import GenosDotsOCRLayoutModel
 
@@ -94,11 +94,11 @@ class StandardPdfPipeline(PaginatedPipeline):
                     options=table_structure_options.vlm_table_structure_options,
                 )
             else:
-                table_model = TableStructureModel(
+                # TableFormer는 전처리기 파드 안에서 로드하지 않는다 — 별도 파드(genon/serving/tableformer)
+                # 를 HTTP 로 호출한다(자원 낭비/CPU 저하/GPU OOM 회피, CLAUDE.md TODO #1).
+                table_model = TableStructureRemoteModel(
                     enabled=pipeline_options.do_table_structure,
-                    artifacts_path=artifacts_path,
                     options=table_structure_options,
-                    accelerator_options=pipeline_options.accelerator_options,
                 )
 
         ocr_model = self.get_ocr_model(artifacts_path=artifacts_path)

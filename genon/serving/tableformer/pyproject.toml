@@ -1,0 +1,29 @@
+[project]
+name = "doc-parser-tableformer"
+version = "1.0.0"
+requires-python = ">=3.10,<4.0"
+description = "TableFormer (table structure recognition) serving"
+
+# docling-ibm-models 버전은 doc_parser 루트 pyproject.toml 과 고정 동기화한다
+# (클라이언트가 기대하는 tf_responses/predict_details 스키마가 버전에 묶여 있음).
+dependencies = [
+    "docling-ibm-models==3.10.3",
+    "fastapi>=0.110,<1.0",
+    "uvicorn[standard]>=0.29,<1.0",
+    "huggingface_hub>=0.23,<1.0",
+    "pillow",
+    "numpy",
+    # docling_ibm_models.tableformer.data_management.tf_predictor 가 cv2 를 import 하는데,
+    # docling-ibm-models 자체는 이를 의존성으로 선언하지 않는다(doc_parser 본체에선 docling 의
+    # 다른 전이 의존성으로 딸려와 가려져 있었음). headless(서버라 GUI 불필요) 버전으로 명시.
+    "opencv-python-headless",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.uv]
+package = false
+index-url = "https://pypi.org/simple"
+# paddle과 달리 별도 wheel 인덱스가 필요 없다 — docling-ibm-models/torch 모두 PyPI에서 설치됨.

@@ -1,0 +1,61 @@
+# CPU 전용 변형(GPU limit 없음, TABLEFORMER_DEVICE=cpu). Service 이름은 GPU 변형과 동일하므로
+# 사이트마다 둘 중 하나만 적용한다.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: doc-parser-tableformer-deployment
+  namespace: llmops
+  labels:
+    app: doc-parser-tableformer
+spec:
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: doc-parser-tableformer
+  template:
+    metadata:
+      labels:
+        app: doc-parser-tableformer
+    spec:
+      serviceAccountName: llmops
+      containers:
+        - name: doc-parser-tableformer
+          image: mncregistry:30500/doc-parser-tableformer:0.0.0
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8080
+          env:
+            - name: TZ
+              value: Asia/Seoul
+            - name: PROFILE
+              value: prod
+            - name: TABLEFORMER_MODE
+              value: accurate
+            - name: TABLEFORMER_DEVICE
+              value: cpu
+            - name: TABLEFORMER_NUM_THREADS
+              value: "8"
+            - name: TABLEFORMER_MAX_CONCURRENCY
+              value: "1"
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 20
+            periodSeconds: 15
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: doc-parser-tableformer-service
+  namespace: llmops
+  labels:
+    app: doc-parser-tableformer
+spec:
+  selector:
+    app: doc-parser-tableformer
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080

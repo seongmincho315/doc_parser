@@ -347,6 +347,10 @@ class IntelligentDocumentProcessor:
         self.pipe_line_options.do_table_structure = True
         self.pipe_line_options.table_structure_options.do_cell_matching = True
         self.pipe_line_options.table_structure_options.mode = table_structure_mode
+        # TableFormer는 전처리기 파드 안에서 로드하지 않는다 — 별도 파드(genon/serving/tableformer)를
+        # HTTP로 호출한다(CLAUDE.md TODO #1). genos_layout(기본)의 빈 테이블 보강 fallback도 동일.
+        _table_structure = ps.resolve_table_structure_settings(pdf_cfg)
+        ps.apply_table_structure_settings(self.pipe_line_options, _table_structure)
         self.pipe_line_options.accelerator_options = accelerator_options
 
         # docling 모델(TableFormer 등) 로컬 경로. config 에 값이 있을 때만 설정하고,
