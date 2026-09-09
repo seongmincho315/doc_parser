@@ -6,7 +6,6 @@ authors = [{ name = "Seunghyun Nam", email = "seunghyun.nam@genon.ai" }]
 requires-python = '>=3.11,<4.0'
 dependencies = [
     "docling-core==2.85.0",
-    "docling-ibm-models==3.10.3",
     "docling-parse==7.3.0",
     "python-multipart==0.0.22",
     "gunicorn==23.0.0",
@@ -17,7 +16,6 @@ dependencies = [
     "aiohttp==3.13.3",
     "httpx>=0.27.0",
     "transformers==4.57.6",
-    "accelerate==1.12.0",
     "unstructured==0.18.32",
     "python-pptx==1.0.2",
     "python-docx==1.1.2",
@@ -48,8 +46,12 @@ dependencies = [
     "pi-heif==0.22.0",
     # unstructured-inference / unstructured-pytesseract 는 제거했다 — 이미지(JPG/PNG)와
     # 미지 확장자의 hi_res 파싱(YOLOX+Table Transformer)은 이제 별도 파드(genon/serving/
-    # unstructured_hires)로만 서빙된다(RemoteHiResLoader). 단, docling-ibm-models(3.10.3, 위
-    # 참조)가 ReadingOrderModel에 필수라 torch 자체는 doc-parser 본체에 여전히 남는다.
+    # unstructured_hires)로만 서빙된다(RemoteHiResLoader).
+    # docling-ibm-models / accelerate 도 제거했다 — TableFormer 등은 이미 파드로 분리됐고,
+    # 유일하게 무조건 쓰던 ReadingOrderModel의 두 서브모듈(pure-python)은
+    # docling/utils/{reading_order_rb,list_marker_processor}.py 로 벤더링해서 대체.
+    # accelerate는 genon/ 어디서도 안 쓰임(transformers는 AutoTokenizer만 써서 torch 불필요).
+    # 이제 doc-parser 본체에 torch가 안 남는다(uv.lock 재생성 확인 완료).
     "pdf2image==1.17.0",
     "pytesseract==0.3.13",
     "opencv-python>=4.11.0.86",
