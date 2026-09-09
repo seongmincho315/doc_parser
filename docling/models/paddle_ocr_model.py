@@ -17,16 +17,15 @@ from docling.datamodel.pipeline_options import (
 from docling.datamodel.settings import settings
 from docling.models.base_ocr_model import BaseOcrModel
 from docling.utils.accelerator_utils import decide_device
+from docling.utils.image_codec import numpy_to_png_bytes
 from docling.utils.profiling import TimeRecorder
 
 _log = logging.getLogger(__name__)
 
-import itertools, io
+import itertools
 import grpc
 import docling.models.ocr_pb2 as ocr_pb2
 import docling.models.ocr_pb2_grpc as ocr_pb2_grpc
-import io
-from PIL import Image
 
 import base64
 import numpy as np
@@ -133,26 +132,6 @@ class PaddleOcrModel(BaseOcrModel):
                 yield page
 
 
-    def numpy_to_image(self, arr: np.ndarray) -> Image.Image:
-        if arr.dtype != np.uint8:
-            a_min, a_max = float(arr.min()), float(arr.max())
-            arr = ((arr - a_min) / (a_max - a_min) * 255.0).astype(np.uint8) if a_max > a_min else np.zeros_like(arr, dtype=np.uint8)
-        if arr.ndim == 2:
-            return Image.fromarray(arr, mode="L")
-        if arr.ndim == 3 and arr.shape[2] == 3:
-            return Image.fromarray(arr, mode="RGB")
-        if arr.ndim == 3 and arr.shape[2] == 4:
-            return Image.fromarray(arr, mode="RGBA")
-        raise ValueError(f"Unsupported array shape: {arr.shape}")
-
-    def pil_to_bytes(self, img: Image.Image) -> tuple[bytes]:
-        """
-        이미지를 PNG로 직렬화.
-        """
-        buf = io.BytesIO()
-        img.save(buf, format="PNG", optimize=True)
-        return buf.getvalue()
-
     def post_ocr_bytes(self, img_bytes: bytes, timeout=60) -> dict:
         HEADERS = {"Accept": "application/json", "Content-Type": "application/json"}
         payload = {"file": base64.b64encode(img_bytes).decode("ascii"), "fileType": 1, "visualize": False}
@@ -163,8 +142,7 @@ class PaddleOcrModel(BaseOcrModel):
         return r.json()
 
     def ocr_numpy_image(self, arr: np.ndarray, timeout=60) -> dict:
-        img = self.numpy_to_image(arr)
-        img_bytes = self.pil_to_bytes(img)
+        img_bytes = numpy_to_png_bytes(arr)
         return self.post_ocr_bytes(img_bytes, timeout=timeout)
 
     def extract_ocr_fields(self, resp: dict):

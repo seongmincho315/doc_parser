@@ -47,7 +47,15 @@
       "Read(//tmp/tableformer_smoke/**)",
       "Bash(docker exec *)",
       "Bash(nvidia-smi)",
-      "Read(//dev/**)"
+      "Read(//dev/**)",
+      "Bash(python3 -m py_compile docling/models/paddle_ocr_model.py)",
+      "Bash(python3 -c ' *)",
+      "Bash(.venv/bin/python -c ' *)",
+      "Bash(uv run *)",
+      "Bash(python3 -m venv /tmp/imgcodec_check_venv)",
+      "Bash(/tmp/imgcodec_check_venv/bin/pip install *)",
+      "Bash(/tmp/imgcodec_check_venv/bin/python -c ' *)",
+      "Bash(rm -rf /tmp/imgcodec_check_venv)"
     ],
     "deny": [
       "Read(dist/**)",
