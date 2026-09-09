@@ -21,7 +21,8 @@
    - FireRed
    - Abot
 4. 전처리기 이미지에서 torch 빼는게 가능할지??
+   - unstructured -> 파드
+   - reading-order -> 파이썬으로 옮겨놓기
+   - easy-ocr -> 안쓰니까 지움
 5. 여러 전처리기 통합
 
-
-사용자 메모: 언스트럭쳐드에서 왜 토치 쓰는거???
