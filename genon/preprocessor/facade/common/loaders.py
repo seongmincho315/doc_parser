@@ -19,6 +19,7 @@ import subprocess
 import sys
 import threading
 import uuid
+from dataclasses import dataclass
 from glob import glob
 
 import pandas as pd
@@ -27,6 +28,7 @@ import requests
 from langchain_community.document_loaders import DataFrameLoader, PyMuPDFLoader
 from langchain_core.documents import Document
 
+from genon.preprocessor.facade.common.config_parse import as_dict, parse_optional_int
 from genon.preprocessor.facade.common.file_probe import get_pdf_path
 
 try:
@@ -270,6 +272,120 @@ class TabularLoaderBase:
             data_dict["data"].append(data)
 
         return data_dict
+
+
+def elements_json_to_documents(elements: list[dict], source: str) -> list[Document]:
+    """unstructured hi_res 파드가 반환한 element JSON 리스트 → langchain Document 리스트.
+
+    기존에 parser_processor.py의 _load_image_documents_fallback이 인프로세스 unstructured
+    Element 객체에서 손으로 뽑던 필드(text/metadata/category/element_id)를, 원격 파드가
+    반환하는 같은 필드셋의 JSON dict에서 그대로 읽도록 옮긴 것 — 변환 로직은 동일하다."""
+    documents: list[Document] = []
+    for element in elements:
+        text = element.get("text", "")
+        if text is None:
+            text = ""
+        elif not isinstance(text, str):
+            text = str(text)
+
+        metadata: dict = {"source": source}
+        element_metadata = element.get("metadata")
+        if isinstance(element_metadata, dict):
+            metadata.update(element_metadata)
+
+        category = element.get("category")
+        if category is not None:
+            metadata["category"] = category
+
+        element_id = element.get("element_id")
+        if element_id:
+            metadata["element_id"] = element_id
+
+        documents.append(Document(page_content=text, metadata=metadata))
+
+    return documents
+
+
+@dataclass(frozen=True)
+class HiResSettings:
+    """unstructured hi_res 파드(genon/serving/unstructured_hires) 호출 설정."""
+
+    endpoint: str
+    timeout: int
+
+
+def resolve_hires_settings(cfg: dict) -> HiResSettings:
+    """최상위 yaml의 unstructured_hires 섹션에서 hi_res 파드 엔드포인트를 해석한다.
+
+    이미지(JPG/PNG)와 미지 확장자 fallback 처리는 이제 이 파드로만 서빙되므로(로컬
+    unstructured-inference 폴백 없음), endpoint 미설정은 배포 시 반드시 잡아야 할
+    설정 누락이다 — 여기서는 경고만 남기고(resolve_layout_settings 관례와 동일),
+    실제 실패는 RemoteHiResLoader 생성 시점의 ValueError로 확실히 드러난다."""
+    cfg = as_dict(cfg)
+    hires_cfg = as_dict(cfg.get("unstructured_hires"))
+
+    endpoint = hires_cfg.get("endpoint") or ""
+    if not endpoint:
+        _log.warning(
+            "[DocumentProcessor] unstructured_hires.endpoint 가 비어 있습니다. "
+            "이미지/미지 확장자 처리는 별도 파드로만 서빙되므로 사이트 배포 시 yaml 에 반드시 지정하세요."
+        )
+
+    timeout = parse_optional_int(hires_cfg.get("timeout"), "unstructured_hires.timeout")
+    if timeout is None or timeout <= 0:
+        timeout = 60
+
+    return HiResSettings(endpoint=endpoint, timeout=timeout)
+
+
+class RemoteHiResLoader:
+    """langchain 로더(``load() -> list[Document]``) 흉내를 낸 unstructured hi_res 파드 클라이언트.
+
+    UnstructuredImageLoader/UnstructuredFileLoader를 그 자리에서 대체한다 — 나머지 호출부
+    (load_documents/split_documents 등)는 loader.load()의 반환 타입이 같으므로 손댈 필요가 없다.
+    TableFormer를 파드로 뺄 때와 같은 이유: hi_res(YOLOX+Table Transformer)가 doc-parser
+    프로세스 안에서 torch를 로드하는 걸 없애기 위함(CLAUDE.md TODO #1과 같은 계열의 정리).
+    """
+
+    def __init__(
+        self,
+        file_path: str,
+        endpoint: str,
+        timeout: int = 60,
+        languages: list[str] | None = None,
+        strategy: str = "hi_res",
+        headers: dict | None = None,
+    ):
+        if not endpoint:
+            raise ValueError(
+                "unstructured hi_res 파드 endpoint가 설정되지 않았습니다. "
+                "이미지/미지 확장자 처리는 이제 별도 파드(genon/serving/unstructured_hires)로만 "
+                "서빙되므로 yaml에 반드시 endpoint를 지정하세요."
+            )
+        self.file_path = file_path
+        self.endpoint = endpoint
+        self.timeout = timeout
+        self.languages = languages or ["kor", "eng"]
+        self.strategy = strategy
+        self.headers = headers or {}
+
+    def load(self) -> list[Document]:
+        with open(self.file_path, "rb") as f:
+            files = {"file": (os.path.basename(self.file_path), f)}
+            data = {"languages": ",".join(self.languages), "strategy": self.strategy}
+            r = requests.post(
+                self.endpoint,
+                files=files,
+                data=data,
+                headers=self.headers or None,
+                timeout=self.timeout,
+            )
+        if not r.ok:
+            raise RuntimeError(
+                f"unstructured hi_res 파드 HTTP {r.status_code}: {r.text[:500]}"
+            )
+        elements = r.json()["elements"]
+        return elements_json_to_documents(elements, source=self.file_path)
 
 
 class AudioLoaderBase:

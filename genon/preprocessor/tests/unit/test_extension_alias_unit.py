@@ -219,15 +219,37 @@ def test_unknown_text_extension_uses_textloader_not_unstructured(tmp_path: Path)
 
 @pytest.mark.unit
 def test_unknown_binary_extension_still_goes_to_unstructured(tmp_path: Path):
-    """텍스트가 아니면 기존대로 Unstructured 로 보낸다(동작 보존)."""
+    """텍스트가 아니면 unstructured hi_res 파드로 보낸다(동작 보존, #TODO 파드분리 후 갱신).
+
+    이미지/미지 확장자 처리는 이제 별도 파드로만 서빙되므로(로컬 unstructured-inference
+    폴백 없음), endpoint 미설정이면 RemoteHiResLoader가 즉시 ValueError를 낸다 — 여기서는
+    라우팅 자체(TextLoader로 안 빠지는지)만 보고 싶으므로 더미 endpoint를 넣어준다.
+    """
     from facade.parser_processor import GenericDocumentLoader, TextLoader
+    from genon.preprocessor.facade.common.loaders import RemoteHiResLoader
 
     src = tmp_path / "sample.bin"
     src.write_bytes(b"\x00\x01\x02\x03" * 64)
 
-    loader = GenericDocumentLoader().get_loader(str(src))
+    loader = GenericDocumentLoader(hires_endpoint="http://dummy/partition").get_loader(str(src))
 
     assert not isinstance(loader, TextLoader)
+    assert isinstance(loader, RemoteHiResLoader)
+
+
+@pytest.mark.unit
+def test_missing_hires_endpoint_fails_fast(tmp_path: Path):
+    """hi_res 파드 endpoint 미설정 시 조용히 넘어가지 않고 즉시 ValueError를 낸다.
+
+    TableFormer(TableStructureRemoteModel)와 같은 관례 — 이미지/미지 확장자는 이제
+    별도 파드로만 서빙되므로, 배포 시 endpoint 누락을 첫 요청에서 바로 드러내야 한다."""
+    from facade.parser_processor import GenericDocumentLoader
+
+    src = tmp_path / "sample.bin"
+    src.write_bytes(b"\x00\x01\x02\x03" * 64)
+
+    with pytest.raises(ValueError, match="hi_res"):
+        GenericDocumentLoader(hires_endpoint="").get_loader(str(src))
 
 
 @pytest.mark.unit

@@ -53,9 +53,9 @@ from langchain_community.document_loaders import (
     PyMuPDFLoader,  # PDF
     UnstructuredWordDocumentLoader,  # DOC and DOCX
     UnstructuredPowerPointLoader,  # PPT and PPTX
-    UnstructuredImageLoader,  # JPG, PNG
     UnstructuredMarkdownLoader,  # Markdown
-    UnstructuredFileLoader,  # Generic fallback
+    # JPG/PNG 와 미지 확장자 fallback 은 unstructured hi_res 파드(ld.RemoteHiResLoader)로 처리한다
+    # (torch 의존 없이 로컬에서 처리 가능한 DOC/PPT/MD 만 여기 남김).
 )
 from langchain_core.documents import Document
 from markdown2 import markdown
@@ -1071,6 +1071,10 @@ class DocumentProcessor:
         self._guardrail_timeout = gm_timeout if gm_timeout and gm_timeout > 0 else 60
         self._guardrail_masking_enabled = bool(_parse_optional_bool(gm_cfg.get("masking_enabled"), "guardrail.masking_enabled"))
 
+        # unstructured hi_res(YOLOX+Table Transformer) 파드 설정 — 이미지/미지 확장자 처리는
+        # 이제 전처리기 프로세스 안에서 torch를 로드하지 않고 이 파드로만 서빙된다.
+        self._hires = ld.resolve_hires_settings(cfg)
+
         self.page_chunk_counts = defaultdict(int)
         _gm = dict(
             guardrail_url=self._guardrail_url,
@@ -1283,9 +1287,12 @@ class DocumentProcessor:
             languages = [str(lang).strip() for lang in languages if str(lang).strip()]
             if not languages:
                 languages = ["kor", "eng"]
-            # 한국어 OCR 지원을 위한 언어 설정
-            return UnstructuredImageLoader(
+            # 이미지는 unstructured hi_res(YOLOX+Table Transformer) 파드로만 처리한다
+            # (전처리기 프로세스 안에서 torch를 로드하지 않음).
+            return ld.RemoteHiResLoader(
                 file_path,
+                endpoint=self._hires.endpoint,
+                timeout=self._hires.timeout,
                 languages=languages,  # 한국어 + 영어 OCR
             )
         elif ext in ['.txt', '.json', '.md']:
@@ -1293,7 +1300,9 @@ class DocumentProcessor:
         elif ext == '.md':
             return UnstructuredMarkdownLoader(file_path)
         else:
-            return UnstructuredFileLoader(file_path)
+            return ld.RemoteHiResLoader(
+                file_path, endpoint=self._hires.endpoint, timeout=self._hires.timeout,
+            )
 
     def get_real_file_type(self, file_path: str) -> str:
         """파일 확장자가 아닌 실제 내용으로 파일 타입 판단"""

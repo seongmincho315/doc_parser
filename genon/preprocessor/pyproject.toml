@@ -46,9 +46,11 @@ dependencies = [
     "docling",
     "hatchling>=1.27.0",
     "pi-heif==0.22.0",
-    "unstructured-inference>=1.2.0",
+    # unstructured-inference / unstructured-pytesseract 는 제거했다 — 이미지(JPG/PNG)와
+    # 미지 확장자의 hi_res 파싱(YOLOX+Table Transformer)은 이제 별도 파드(genon/serving/
+    # unstructured_hires)로만 서빙된다(RemoteHiResLoader). 단, docling-ibm-models(3.10.3, 위
+    # 참조)가 ReadingOrderModel에 필수라 torch 자체는 doc-parser 본체에 여전히 남는다.
     "pdf2image==1.17.0",
-    "unstructured-pytesseract==0.3.15",
     "pytesseract==0.3.13",
     "opencv-python>=4.11.0.86",
     "numpy==2.3.4",

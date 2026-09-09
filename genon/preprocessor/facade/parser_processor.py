@@ -15,10 +15,9 @@ from fastapi import Request
 
 from langchain_community.document_loaders import (
     PyMuPDFLoader,
-    UnstructuredFileLoader,
-    UnstructuredImageLoader,
     UnstructuredPowerPointLoader,
     UnstructuredWordDocumentLoader,
+    # JPG/PNG 와 미지 확장자 fallback 은 unstructured hi_res 파드(ld.RemoteHiResLoader)로 처리한다.
 )
 from langchain_core.documents import Document
 
@@ -761,8 +760,11 @@ def _file_looks_like_text(file_path: str) -> bool:
 
 class GenericDocumentLoader:
 
-    def __init__(self):
-        pass
+    def __init__(self, hires_endpoint: str = "", hires_timeout: int = 60):
+        # unstructured hi_res(YOLOX+Table Transformer) 파드 설정 — 이미지/미지 확장자 처리는
+        # 전처리기 프로세스 안에서 torch를 로드하지 않고 이 파드로만 서빙된다.
+        self._hires_endpoint = hires_endpoint
+        self._hires_timeout = hires_timeout
 
     def get_real_file_type(self, file_path: str) -> str:
         with open(file_path, 'rb') as f:
@@ -793,7 +795,12 @@ class GenericDocumentLoader:
             return UnstructuredPowerPointLoader(file_path)
         elif ext in ['.jpg', '.jpeg', '.png']:
             convert_to_pdf(file_path)
-            return UnstructuredImageLoader(file_path, languages=["kor", "eng"])
+            # 이미지는 unstructured hi_res(YOLOX+Table Transformer) 파드로만 처리한다
+            # (전처리기 프로세스 안에서 torch를 로드하지 않음).
+            return ld.RemoteHiResLoader(
+                file_path, endpoint=self._hires_endpoint, timeout=self._hires_timeout,
+                languages=["kor", "eng"],
+            )
         elif ext in ['.txt', '.json', '.md']:
             # .md 는 기본적으로 docling 분기에서 처리된다. 여기로 오는 건
             # formats.md.processing_mode=text 인 레거시 경로뿐이다.
@@ -809,40 +816,11 @@ class GenericDocumentLoader:
             )
             return TextLoader(file_path)
         else:
-            return UnstructuredFileLoader(file_path)
-
-    def _load_image_documents_fallback(self, file_path: str) -> list[Document]:
-        """UnstructuredImageLoader의 __str__ NoneType 오류를 우회해 이미지 요소를 안전하게 적재."""
-        from unstructured.partition.image import partition_image
-
-        elements = partition_image(filename=file_path, languages=["kor", "eng"])
-        documents: list[Document] = []
-
-        for element in elements:
-            text = getattr(element, "text", "")
-            if text is None:
-                text = ""
-            elif not isinstance(text, str):
-                text = str(text)
-
-            metadata: dict[str, Any] = {"source": file_path}
-            if hasattr(element, "metadata") and element.metadata is not None:
-                try:
-                    metadata.update(element.metadata.to_dict())
-                except Exception:
-                    pass
-
-            if hasattr(element, "category"):
-                metadata["category"] = element.category
-
-            if hasattr(element, "to_dict"):
-                element_id = element.to_dict().get("element_id")
-                if element_id:
-                    metadata["element_id"] = element_id
-
-            documents.append(Document(page_content=text, metadata=metadata))
-
-        return documents
+            # 미지 확장자 fallback도 hi_res 파드로 보낸다(unstructured auto-partition이
+            # 이미지로 판별하는 입력이 여기로 흘러들어올 수 있음).
+            return ld.RemoteHiResLoader(
+                file_path, endpoint=self._hires_endpoint, timeout=self._hires_timeout,
+            )
 
     def load_documents(self, file_path: str, **kwargs: dict) -> list:
         try:
@@ -857,14 +835,11 @@ class GenericDocumentLoader:
                 f"처리할 포맷을 지정하세요: {os.path.basename(file_path)}",
             ) from exc
         ext = os.path.splitext(file_path)[-1].lower()
-        try:
-            documents = loader.load()
-        except TypeError as exc:
-            if ext in ['.jpg', '.jpeg', '.png'] and "__str__ returned non-string" in str(exc):
-                _log.warning(f"[GenericDocumentLoader] Image loader fallback: {file_path} ({exc})")
-                documents = self._load_image_documents_fallback(file_path)
-            else:
-                raise
+        # 예전엔 여기서 langchain UnstructuredImageLoader의 "__str__ returned non-string"
+        # 버그를 잡아 _load_image_documents_fallback으로 재시도했다. 이미지는 이제
+        # RemoteHiResLoader(hi_res 파드 JSON 응답을 직접 파싱)로만 처리되므로 그 버그 경로
+        # 자체를 안 타 — 워크어라운드 불필요.
+        documents = loader.load()
 
         if ext in ['.jpg', '.jpeg', '.png']:
             if not documents or not any((doc.page_content or "").strip() for doc in documents):
@@ -934,7 +909,11 @@ class DocumentProcessor:
 
         self._hwp = HwpDocumentLoader()
         self._docx = DocxDocumentLoader()
-        self._generic = GenericDocumentLoader()
+        # 이미지/미지 확장자 처리는 unstructured hi_res 파드로만 서빙된다(torch 로컬 로딩 없음).
+        _hires = ld.resolve_hires_settings(cfg)
+        self._generic = GenericDocumentLoader(
+            hires_endpoint=_hires.endpoint, hires_timeout=_hires.timeout,
+        )
 
         # 신/구 설정 스키마 동시 지원
         whisper_cfg = _as_dict(cfg.get("whisper"))

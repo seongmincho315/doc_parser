@@ -20,6 +20,7 @@ _log = logging.getLogger(__name__)
 # 그대로 유지해 호출부를 건드리지 않는다. 사이트별 조정 대상 상수(구분자, 최소
 # 청크 크기, 토크나이저 경로)는 이 파일에 남아 있으므로 래퍼가 넘겨준다.
 from genon.preprocessor.facade.common import config_parse as cp
+from genon.preprocessor.facade.common import loaders as ld
 from genon.preprocessor.facade.common import pipeline_setup as ps
 from genon.preprocessor.facade.common import runtime_kwargs as rk
 from genon.preprocessor.facade.enrichment.page_description import inject_page_descriptions
@@ -82,7 +83,7 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_community.document_loaders import (
     # TextLoader,                       # TXT
     UnstructuredPowerPointLoader,  # PPT and PPTX
-    UnstructuredFileLoader,  # Generic fallback
+    # 미지 확장자 fallback 은 unstructured hi_res 파드(ld.RemoteHiResLoader)로 처리한다.
 )
 # docling imports
 
@@ -381,6 +382,8 @@ class DocumentProcessor:
         ocr_cfg = _as_dict(cfg.get("ocr"))
         layout_cfg = _as_dict(cfg.get("layout"))
         pdf_cfg = _as_dict(cfg.get("pdf_pipeline"))
+        # 미지 확장자 fallback은 unstructured hi_res 파드로만 서빙된다(torch 로컬 로딩 없음).
+        self._hires = ld.resolve_hires_settings(cfg)
         models_cfg = _as_dict(cfg.get("models"))
         chunking_cfg = _as_dict(cfg.get("chunking"))
         ec = EnrichmentConfig.from_raw(cfg.get("enrichment"), self._config_dir, parent_cfg=cfg)
@@ -802,7 +805,11 @@ class DocumentProcessor:
             convert_to_pdf(file_path, use_pdf_sdk=use_pdf_sdk)
             return UnstructuredPowerPointLoader(file_path)
         else:
-            return UnstructuredFileLoader(file_path)
+            # 미지 확장자 fallback도 hi_res 파드로 보낸다(unstructured auto-partition이
+            # 이미지로 판별하는 입력이 여기로 흘러들어올 수 있음).
+            return ld.RemoteHiResLoader(
+                file_path, endpoint=self._hires.endpoint, timeout=self._hires.timeout,
+            )
 
     def load_documents_langchain(self, file_path: str, **kwargs: dict):
         """langchain으로 문서 로드"""

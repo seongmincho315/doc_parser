@@ -53,6 +53,13 @@ formats:
   md:
     processing_mode: docling
 
+# 이미지(JPG/PNG)와 미지 확장자는 unstructured hi_res(YOLOX+Table Transformer) 파드로만
+# 처리한다(전처리기 프로세스 안에서 torch를 로드하지 않음). 선택이 아니라 필수 — 미설정 시
+# 이미지 첨부파일 처리가 즉시 에러난다. 빌드/배포: genon/serving/unstructured_hires/README.md
+unstructured_hires:
+  endpoint: "http://<UNSTRUCTURED_HIRES_ENDPOINT>/partition"
+  timeout: 60
+
 ocr:
   ocr_mode: "auto" # "auto"(default), "force", "disable"
 
