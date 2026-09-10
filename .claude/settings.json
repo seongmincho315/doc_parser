@@ -88,7 +88,14 @@
       "Bash(cp /home/gamy0315/폐기/my_preprocessor/tableformer/.venv/lib/python3.11/site-packages/docling_ibm_models/list_item_normalizer/list_marker_processor.py /home/gamy0315/doc_parser_branch/doc_parser/docling/utils/list_marker_processor.py)",
       "Bash(python3 -m py_compile docling/models/readingorder_model.py)",
       "Bash(grep -n \"^\\\\s*\\\\\"docling-ibm-models\\\\|^\\\\s*\\\\\"accelerate\\\\|^\\\\s*'easyocr\\\\|^\\\\s*\\\\\"easyocr\" pyproject.toml genon/preprocessor/pyproject.toml)",
-      "Bash(python3 -m py_compile docling/models/readingorder_model.py docling/utils/reading_order_rb.py docling/utils/list_marker_processor.py)"
+      "Bash(python3 -m py_compile docling/models/readingorder_model.py docling/utils/reading_order_rb.py docling/utils/list_marker_processor.py)",
+      "Bash(uv sync *)",
+      "Bash(python3 -m py_compile docling/models/layout_model.py)",
+      "Bash(git checkout *)",
+      "Bash(grep -vE \"^\\\\s*#|^\\\\s*$\" build-script/doc-parser-build.config)",
+      "Bash(bash build-script/doc-parser-build.sh)",
+      "Bash(grep -n \"opencv-python-headless\\\\|unstructured_inference\" genon/preprocessor/docker/Dockerfile.standard genon/preprocessor/docker/Dockerfile.synap)",
+      "Bash(echo \"EXIT=$?\")"
     ],
     "deny": [
       "Read(dist/**)",

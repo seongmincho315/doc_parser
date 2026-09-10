@@ -54,7 +54,12 @@ dependencies = [
     # 이제 doc-parser 본체에 torch가 안 남는다(uv.lock 재생성 확인 완료).
     "pdf2image==1.17.0",
     "pytesseract==0.3.13",
-    "opencv-python>=4.11.0.86",
+    # opencv-python(GUI) 대신 headless로 직접 건다 — 예전엔 unstructured-inference/
+    # docling-ibm-models/easyocr가 비headless를 끌고 와서 Dockerfile 빌드 단계에서
+    # uninstall→headless 재설치를 수동으로 했는데(opencv_python.libs 중복 제거,
+    # ~116MB), 그것들을 다 뺀 지금은 이 줄이 유일한 opencv 의존성이라 처음부터
+    # headless로 받으면 그 재설치 단계 자체가 필요 없다. 첫 파티 코드에 import cv2 없음.
+    "opencv-python-headless>=4.11.0.86",
     "numpy==2.3.4",
     "minio==7.2.20",
 ]

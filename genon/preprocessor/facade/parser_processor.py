@@ -342,6 +342,10 @@ class IntelligentDocumentProcessor:
 
         ps.apply_layout_settings(self.pipe_line_options, _layout)
         docling_settings.perf.page_batch_size = _layout.page_batch_size
+        # _get_ppt_pdf_converter() 가 별도 PdfPipelineOptions()를 새로 만들 때 재사용한다 —
+        # 안 그러면 LayoutOptions 기본값(docling_layout, 로컬 GPU 모델)으로 떨어져서
+        # docling-ibm-models 없이는(genon/preprocessor 는 이제 안 깖) 즉시 죽는다.
+        self._layout_settings = _layout
 
         self.pipe_line_options.do_table_structure = True
         self.pipe_line_options.table_structure_options.do_cell_matching = True
@@ -1724,6 +1728,10 @@ class DocumentProcessor:
         if self._ppt_pdf_converter is not None:
             return self._ppt_pdf_converter
         opts = PdfPipelineOptions()
+        # LayoutOptions 기본값은 docling_layout(로컬 GPU 모델, docling-ibm-models 필요)이라
+        # 명시적으로 genos_layout(기본, 외부 API 위임)으로 맞춰준다 — 안 그러면 이 경량
+        # 컨버터가 PPT/PPTX 파싱 때마다 docling-ibm-models 를 찾다 죽는다.
+        ps.apply_layout_settings(opts, self._layout_settings)
         opts.do_ocr = False
         opts.do_table_structure = False
         opts.generate_page_images = bool(self._page_desc_options.enabled)

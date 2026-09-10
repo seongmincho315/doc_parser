@@ -184,7 +184,7 @@ DOCKER_BUILDKIT=1 docker build \
 
 echo "[INFO] Build done: ${IMAGE_TAG}"
 
-# 이슈 #210 — 빌드 직후 컨테이너에서 torch variant 검증 + 샘플 1건 파싱 smoke
+# 이슈 #210 — 빌드 직후 컨테이너에서 샘플 1건 파싱 smoke
 if [[ "${SMOKE_TEST}" == "true" ]]; then
   SAMPLE_HOST_PATH="${ROOT_DIR}/genon/preprocessor/sample_files/${SMOKE_TEST_FILE}"
   if [[ ! -f "${SAMPLE_HOST_PATH}" ]]; then
@@ -202,31 +202,26 @@ if [[ "${SMOKE_TEST}" == "true" ]]; then
         set -euo pipefail
         cd /app/src
         # venv python 절대경로로 호출 (로그인 셸 /etc/profile 이 PATH 를 덮어쓰면
-        # `python` 이 시스템 python 으로 가서 venv 의 torch 를 못 찾는 문제 회피)
+        # `python` 이 시스템 python 으로 가서 venv 를 못 찾는 문제 회피)
         /app/.venv/bin/python - <<"PY"
 import os, warnings
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 
-variant = os.environ["HW_VARIANT"]
 sample = os.environ["SMOKE_SAMPLE"]
 
-import torch
-has_cuda_build = torch.version.cuda is not None
-print(f"[SMOKE] torch={torch.__version__} cuda_build={torch.version.cuda}")
-expected_cuda = (variant == "gpu")
-assert has_cuda_build == expected_cuda, (
-    f"HW_VARIANT={variant} 인데 torch.version.cuda={torch.version.cuda} — "
-    "GPU/CPU 빌드 분기가 깨졌습니다."
-)
+# HW_VARIANT(gpu/cpu) 에 따른 torch CUDA 빌드 검증은 제거했다 — docling-ibm-models/easyocr를
+# 뺀 뒤로 doc-parser 본체 uv.lock 에 torch 가 아예 안 남아(genon/preprocessor/pyproject.toml
+# 참고) 두 variant 의 이미지가 torch 관점에서는 이제 동일하다. GPU/CPU 분기가 실제로 의미
+# 있는 곳(TableFormer 등)은 genon/serving/ 파드로 분리되어 각자 검증한다.
 
-# 변종 확인 후 실제 파싱 1건
+# 실제 파싱 1건
 from preprocessor import DocumentProcessor
 dp = DocumentProcessor()
 docs = dp.load_documents(sample)
 assert docs, "load_documents returned empty"
 chunks = dp.split_documents(docs)
 assert chunks, "split_documents returned empty"
-print(f"[SMOKE] ok — hw={variant} sample={sample} chunks={len(chunks)}")
+print(f"[SMOKE] ok — sample={sample} chunks={len(chunks)}")
 PY
       '
     echo "[INFO] Smoke test passed"
