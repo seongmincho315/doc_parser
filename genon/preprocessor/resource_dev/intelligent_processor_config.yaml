@@ -23,7 +23,7 @@ formats:
     # 렌더링해 VLM 설명하고 그 텍스트를 페이지별 TextItem 으로 주입한다(PPT 원본 전용).
     # native text 가 있으면 프롬프트에 포함해 요청. enable=true 면 generate_page_images 자동 강제.
     page_description:
-      enable: true
+      enable: false
       # url: "https://genos.genon.ai/api/gateway/rep/serving/776/v1/chat/completions"
       # api_key: "30241fdbb58d42e48a36495da34a6de7"
       # url: "https://genos.genon.ai/api/gateway/rep/serving/807/v1/chat/completions"
@@ -98,6 +98,11 @@ pdf_pipeline:
   generate_page_images: true         # false 로 두면 메모리 절감
   generate_picture_images: true      # false 로 두면 그림 이미지 미생성
   table_structure_mode: "accurate"   # "accurate"(default, 품질) | "fast"(속도)
+  tableformer_remote:
+    # TableFormer(표 구조 인식)는 전처리기 파드 안에서 로드하지 않고 별도 파드로만 서빙된다.
+    # 빌드/배포: genon/serving/tableformer/README.md. docker run(GPU)으로 192.168.75.174:8080 서빙 중.
+    endpoint: "http://192.168.75.174:8080/table/structure"
+    timeout: 60
 
 # table_image
 # 복잡 표 대응: 표를 picture 와 동일하게 이미지로 잘라 저장하고 media_files 에
@@ -126,7 +131,7 @@ output:
 # 비활성화 방법: ① 항목 삭제  ② 항목 주석 처리  ③ enable: false 추가 (설정 보존)
 enrichment:
   - toc:
-      enable: true
+      enable: false
       # 동작 보존: 기존 하드코딩 값(서빙 502)을 그대로 사용
       url: "https://genos.genon.ai/api/gateway/rep/serving/752/v1/chat/completions"
       api_key: "d1a9e0acab6243019008a96cd8af868e"
@@ -156,7 +161,7 @@ enrichment:
         carryover_max_tokens: 1500  # 다음 청크에 주입할 누적 목차 토큰 상한
 
   - metadata:
-      enable: true
+      enable: false
       # 동작 보존: 기존 하드코딩 값(서빙 502)을 그대로 사용
       # system_prompt 가 설정되면 facade custom metadata enricher를 사용하고,
       # 비어있으면 docling 내장 metadata 추출 경로를 사용한다.
@@ -209,7 +214,7 @@ enrichment:
       max_chars: 6000
 
   - image_description:
-      enable: true
+      enable: false
       url: "https://genos.genon.ai/api/gateway/rep/serving/752/v1/chat/completions"
       api_key: "d1a9e0acab6243019008a96cd8af868e"
       model: "model"
@@ -271,14 +276,14 @@ enrichment:
   # doc_type(요청 kwargs)과 일치하는 설정만 동작. config_file 은 resource_dev 공유본.
   # 카드 상품 메타데이터(12필드) 추출 — monimo 카드 HTML(flatten 후) 대상
   - custom_fields:
-      enable: true
+      enable: false
       doc_type: card
       extractor: llm
       config_file: custom_field_card.yaml   # resource_path 자동 = 이 yaml 파일 디렉토리
 
   # FAQ Excel/CSV 행별 메타데이터 매핑 — LLM 호출 없음
   - custom_fields:
-      enable: true
+      enable: false
       doc_type: faq
       extractor: tabular_mapping
       config_file: custom_field_faq.yaml   # resource_path 자동 = 이 yaml 파일 디렉토리
