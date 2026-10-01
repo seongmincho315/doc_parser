@@ -45,13 +45,20 @@ dependencies = [
     'pydantic (>=2.0.0,<3.0.0)',
     "docling-core[chunking]==2.85.0",
     'docling-parse==7.3.0',
-    "docling-ibm-models==3.10.3",
+    # docling-ibm-models / easyocr 는 제거했다 — 둘 다 torch를 하드 의존성으로 끌고 오는데
+    # doc-parser(genon/preprocessor)의 기본 경로에서는 실제로 안 쓰인다:
+    #   - docling-ibm-models: TableFormer/docling_layout/code_formula/document_figure_classifier
+    #     전부 지연 import(옵션으로 켜야만 로드됨, 기본은 genos_layout+TableFormer 파드).
+    #     ReadingOrderModel이 유일하게 무조건 쓰던 두 서브모듈(reading_order_rb,
+    #     list_marker_processor)은 순수 파이썬이라 docling/utils/ 에 벤더링해서 대체함.
+    #   - easyocr: EasyOcrModel도 지연 import고, doc-parser는 항상 PaddleOcrOptions를 명시
+    #     지정해서 EasyOcrModel 자체가 인스턴스화되지 않음(OCR factory가 kind로 클래스 선택).
+    # (genon/serving/tableformer/ 는 완전히 별개 프로젝트라 자기 pyproject.toml에 그대로 남아있음)
     'filetype (>=1.2.0,<2.0.0)',
     'pypdfium2 (>=5.0.0, <6.0.0)',
     'pydantic-settings (>=2.3.0,<3.0.0)',
     'huggingface_hub (>=0.23,<1)',
     'requests (>=2.32.2,<3.0.0)',
-    'easyocr (>=1.7,<2.0)',
     'certifi (>=2024.7.4)',
     'rtree (>=1.3.0,<2.0.0)',
     'typer (>=0.12.5,<0.17.0)',

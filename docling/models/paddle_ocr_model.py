@@ -7,7 +7,7 @@ import numpy
 from docling_core.types.doc import BoundingBox, CoordOrigin
 from docling_core.types.doc.page import BoundingRectangle, TextCell
 
-from docling.datamodel.accelerator_options import AcceleratorDevice, AcceleratorOptions
+from docling.datamodel.accelerator_options import AcceleratorOptions
 from docling.datamodel.base_models import Page
 from docling.datamodel.document import ConversionResult
 from docling.datamodel.pipeline_options import (
@@ -16,7 +16,6 @@ from docling.datamodel.pipeline_options import (
 )
 from docling.datamodel.settings import settings
 from docling.models.base_ocr_model import BaseOcrModel
-from docling.utils.accelerator_utils import decide_device
 from docling.utils.image_codec import numpy_to_png_bytes
 from docling.utils.profiling import TimeRecorder
 
@@ -54,12 +53,8 @@ class PaddleOcrModel(BaseOcrModel):
             if self.options.ocr_endpoint == "":
                 raise ValueError("PaddleOcrOptions.ocr_endpoint must be set when using PaddleOcrModel.")
 
-            # Decide the accelerator devices
-            device = decide_device(accelerator_options.device)
-            use_cuda = str(AcceleratorDevice.CUDA.value).lower() in device
-            use_dml = accelerator_options.device == AcceleratorDevice.AUTO
-            intra_op_num_threads = accelerator_options.num_threads
-
+            # 원격 HTTP 엔드포인트로 OCR을 위임하는 방식이라 로컬 가속기 디바이스를
+            # 쓸 일이 없다(torch 의존성 제거 대상 — decide_device는 torch를 임포트한다).
             self.ocr_endpoint = self.options.ocr_endpoint
             self.timeout = self.options.timeout
 

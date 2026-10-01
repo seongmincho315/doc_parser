@@ -12,13 +12,6 @@ from docling_core.types.doc import (
     TableData,
 )
 from docling_core.types.doc.document import ContentLayer
-from docling_ibm_models.list_item_normalizer.list_marker_processor import (
-    ListItemMarkerProcessor,
-)
-from docling_ibm_models.reading_order.reading_order_rb import (
-    PageElement as ReadingOrderPageElement,
-    ReadingOrderPredictor,
-)
 from pydantic import BaseModel, ConfigDict
 
 from docling.datamodel.base_models import (
@@ -30,7 +23,12 @@ from docling.datamodel.base_models import (
     TextElement,
 )
 from docling.datamodel.document import ConversionResult
+from docling.utils.list_marker_processor import ListItemMarkerProcessor
 from docling.utils.profiling import ProfilingScope, TimeRecorder
+from docling.utils.reading_order_rb import (
+    PageElement as ReadingOrderPageElement,
+    ReadingOrderPredictor,
+)
 
 
 class ReadingOrderOptions(BaseModel):
