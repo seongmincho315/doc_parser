@@ -1,151 +1,141 @@
-<p align="center">
-  <a href="https://github.com/docling-project/docling">
-    <img loading="lazy" alt="Docling" src="https://github.com/docling-project/docling/raw/main/docs/assets/docling_processing.png" width="100%"/>
-  </a>
-</p>
+# doc parser
 
-# Docling
+-  Fork 과정: docling -> https://github.com/genonai/doc_parser -> https://github.com/seongmincho315/doc_parser
 
-<p align="center">
-  <a href="https://trendshift.io/repositories/12132" target="_blank"><img src="https://trendshift.io/api/badge/repositories/12132" alt="DS4SD%2Fdocling | Trendshift" style="width: 250px; height: 55px;" width="250" height="55"/></a>
-</p>
 
-[![arXiv](https://img.shields.io/badge/arXiv-2408.09869-b31b1b.svg)](https://arxiv.org/abs/2408.09869)
-[![Docs](https://img.shields.io/badge/docs-live-brightgreen)](https://docling-project.github.io/docling/)
-[![PyPI version](https://img.shields.io/pypi/v/docling)](https://pypi.org/project/docling/)
-[![PyPI - Python Version](https://img.shields.io/pypi/pyversions/docling)](https://pypi.org/project/docling/)
-[![uv](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/uv/main/assets/badge/v0.json)](https://github.com/astral-sh/uv)
-[![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
-[![Pydantic v2](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/pydantic/pydantic/main/docs/badge/v2.json)](https://pydantic.dev)
-[![pre-commit](https://img.shields.io/badge/pre--commit-enabled-brightgreen?logo=pre-commit&logoColor=white)](https://github.com/pre-commit/pre-commit)
-[![License MIT](https://img.shields.io/github/license/docling-project/docling)](https://opensource.org/licenses/MIT)
-[![PyPI Downloads](https://static.pepy.tech/badge/docling/month)](https://pepy.tech/projects/docling)
-[![Docling Actor](https://apify.com/actor-badge?actor=vancura/docling?fpr=docling)](https://apify.com/vancura/docling)
-[![OpenSSF Best Practices](https://www.bestpractices.dev/projects/10101/badge)](https://www.bestpractices.dev/projects/10101)
-[![LF AI & Data](https://img.shields.io/badge/LF%20AI%20%26%20Data-003778?logo=linuxfoundation&logoColor=fff&color=0094ff&labelColor=003778)](https://lfaidata.foundation/projects/)
+## 레포 구조
 
-Docling simplifies document processing, parsing diverse formats — including advanced PDF understanding — and providing seamless integrations with the gen AI ecosystem.
 
-## Features
+## 이미지 빌드 방법
 
-* 🗂️  Parsing of [multiple document formats][supported_formats] incl. PDF, DOCX, PPTX, XLSX, HTML, WAV, MP3, images (PNG, TIFF, JPEG, ...), and more
-* 📑 Advanced PDF understanding incl. page layout, reading order, table structure, code, formulas, image classification, and more
-* 🧬 Unified, expressive [DoclingDocument][docling_document] representation format
-* ↪️  Various [export formats][supported_formats] and options, including Markdown, HTML, [DocTags](https://arxiv.org/abs/2503.11576) and lossless JSON
-* 🔒 Local execution capabilities for sensitive data and air-gapped environments
-* 🤖 Plug-and-play [integrations][integrations] incl. LangChain, LlamaIndex, Crew AI & Haystack for agentic AI
-* 🔍 Extensive OCR support for scanned PDFs and images
-* 👓 Support of several Visual Language Models ([SmolDocling](https://huggingface.co/ds4sd/SmolDocling-256M-preview))
-* 🎙️  Support for Audio with Automatic Speech Recognition (ASR) models
-* 💻 Simple and convenient CLI
 
-### Coming soon
+## 배포 방법
 
-* 📝 Metadata extraction, including title, authors, references & language
-* 📝 Chart understanding (Barchart, Piechart, LinePlot, etc)
-* 📝 Complex chemistry understanding (Molecular structures)
+<details>
+<summary>테이블포머 배포 방법</summary>
 
-## Installation
+<details>
+<summary>쿠버네티스 방법</summary>
 
-To use Docling, simply install `docling` from your package manager, e.g. pip:
-```bash
-pip install docling
-```
+- GPU: `genon/serving/tableformer/k8s-manifest/doc-parser-tableformer-deployment.yaml`
+- CPU 전용: `genon/serving/tableformer/k8s-manifest/doc-parser-tableformer-deployment-cpu.yaml`
+- 둘 다 `Service: doc-parser-tableformer-service`(namespace `llmops`, port 8080)를 만든다 —
+  사이트마다 하나만 적용.
+- 전처리기 쪽 설정: `pdf_pipeline.tableformer_remote.endpoint`에
+  `http://doc-parser-tableformer-service:8080/table/structure` 기입
+  (자세한 건 `genon/preprocessor/facade/gitbook_doc/installation.md` 참고).
 
-Works on macOS, Linux and Windows environments. Both x86_64 and arm64 architectures.
+</details>
 
-More [detailed installation instructions](https://docling-project.github.io/docling/installation/) are available in the docs.
+<details>
+<summary>도커 방법</summary>
 
-## Getting started
+쿠버네티스가 없는 서버는 `docker run`으로 직접 띄운다. k8s 매니페스트의 env를 그대로 옮긴 것.
 
-To convert individual documents with python, use `convert()`, for example:
-
-```python
-from docling.document_converter import DocumentConverter
-
-source = "https://arxiv.org/pdf/2408.09869"  # document per local path or URL
-converter = DocumentConverter()
-result = converter.convert(source)
-print(result.document.export_to_markdown())  # output: "## Docling Technical Report[...]"
-```
-
-More [advanced usage options](https://docling-project.github.io/docling/usage/) are available in
-the docs.
-
-## CLI
-
-Docling has a built-in CLI to run conversions.
+GPU:
 
 ```bash
-docling https://arxiv.org/pdf/2206.01062
+docker load -i doc-parser-tableformer-dev.tar.gz   # 이미지 먼저 로드
+
+docker run -d \
+  --name doc-parser-tableformer \
+  --restart unless-stopped \
+  --gpus all \
+  -p 8080:8080 \
+  -e TZ=Asia/Seoul \
+  -e PROFILE=prod \
+  -e TABLEFORMER_MODE=accurate \
+  -e TABLEFORMER_DEVICE=cuda \
+  -e TABLEFORMER_MAX_CONCURRENCY=1 \
+  doc-parser-tableformer:dev
 ```
 
-You can also use 🥚[SmolDocling](https://huggingface.co/ds4sd/SmolDocling-256M-preview) and other VLMs via Docling CLI:
+CPU 전용:
+
 ```bash
-docling --pipeline vlm --vlm-model smoldocling https://arxiv.org/pdf/2206.01062
-```
-This will use MLX acceleration on supported Apple Silicon hardware.
-
-Read more [here](https://docling-project.github.io/docling/usage/)
-
-## Documentation
-
-Check out Docling's [documentation](https://docling-project.github.io/docling/), for details on
-installation, usage, concepts, recipes, extensions, and more.
-
-## Examples
-
-Go hands-on with our [examples](https://docling-project.github.io/docling/examples/),
-demonstrating how to address different application use cases with Docling.
-
-## Integrations
-
-To further accelerate your AI application development, check out Docling's native
-[integrations](https://docling-project.github.io/docling/integrations/) with popular frameworks
-and tools.
-
-## Get help and support
-
-Please feel free to connect with us using the [discussion section](https://github.com/docling-project/docling/discussions).
-
-## Technical report
-
-For more details on Docling's inner workings, check out the [Docling Technical Report](https://arxiv.org/abs/2408.09869).
-
-## Contributing
-
-Please read [Contributing to Docling](https://github.com/docling-project/docling/blob/main/CONTRIBUTING.md) for details.
-
-## References
-
-If you use Docling in your projects, please consider citing the following:
-
-```bib
-@techreport{Docling,
-  author = {Deep Search Team},
-  month = {8},
-  title = {Docling Technical Report},
-  url = {https://arxiv.org/abs/2408.09869},
-  eprint = {2408.09869},
-  doi = {10.48550/arXiv.2408.09869},
-  version = {1.0.0},
-  year = {2024}
-}
+docker run -d \
+  --name doc-parser-tableformer \
+  --restart unless-stopped \
+  -p 8080:8080 \
+  -e TZ=Asia/Seoul \
+  -e PROFILE=prod \
+  -e TABLEFORMER_MODE=accurate \
+  -e TABLEFORMER_DEVICE=cpu \
+  -e TABLEFORMER_NUM_THREADS=8 \
+  -e TABLEFORMER_MAX_CONCURRENCY=1 \
+  doc-parser-tableformer:dev
 ```
 
-## License
+헬스체크: `curl http://localhost:8080/health`
 
-The Docling codebase is under MIT license.
-For individual model usage, please refer to the model licenses found in the original packages.
+전처리기 쪽 설정: k8s Service DNS가 없으니 `pdf_pipeline.tableformer_remote.endpoint`에
+`http://<서버IP>:8080/table/structure` 처럼 실제 접근 가능한 주소를 기입.
 
-## LF AI & Data
+</details>
 
-Docling is hosted as a project in the [LF AI & Data Foundation](https://lfaidata.foundation/projects/).
+</details>
 
-### IBM ❤️ Open Source AI
+<details>
+<summary>hi_res 배포 방법</summary>
 
-The project was started by the AI for knowledge team at IBM Research Zurich.
+<details>
+<summary>쿠버네티스 방법</summary>
 
-[supported_formats]: https://docling-project.github.io/docling/usage/supported_formats/
-[docling_document]: https://docling-project.github.io/docling/concepts/docling_document/
-[integrations]: https://docling-project.github.io/docling/integrations/
+- `genon/serving/unstructured_hires/k8s-manifest/doc-parser-unstructured-hires-deployment.yaml`
+  — CPU 전용(YOLOX는 onnxruntime CPU로 충분히 빠르고 Table Transformer도 이미지당 표 개수만큼만
+  가볍게 돎). GPU가 필요하면 `resources.limits.nvidia.com/gpu`를 추가.
+- `Service: doc-parser-unstructured-hires-service`(namespace `llmops`, port 8080).
+- 전처리기 쪽 설정: yaml의 `unstructured_hires.endpoint`에
+  `http://doc-parser-unstructured-hires-service:8080/partition` 기입
+  (`genon/preprocessor/facade/gitbook_doc/installation.md` 참고). **이 파드는 옵션이 아니라 필수** —
+  로컬 폴백이 없으므로 endpoint 미설정 시 이미지/미지 확장자 처리가 `ValueError`로 즉시 실패한다.
+
+</details>
+
+<details>
+<summary>도커 방법</summary>
+
+쿠버네티스가 없는 서버는 `docker run`으로 직접 띄운다. k8s 매니페스트의 env를 그대로 옮긴 것.
+
+CPU 전용(기본, k8s 매니페스트와 동일 설정 — YOLOX/Table Transformer 둘 다 CPU로 충분):
+
+```bash
+docker load -i doc-parser-unstructured-hires-dev.tar.gz   # 이미지 먼저 로드
+
+docker run -d \
+  --name doc-parser-unstructured-hires \
+  --restart unless-stopped \
+  -p 8081:8080 \
+  -e TZ=Asia/Seoul \
+  -e PROFILE=prod \
+  -e HIRES_MAX_CONCURRENCY=4 \
+  doc-parser-unstructured-hires:dev
+```
+
+GPU가 필요하면(Table Transformer는 torch가 CUDA 빌드라 GPU 노출 시 자동으로 씀. YOLOX는
+`onnxruntime`(CPU 전용 패키지)이라 GPU를 줘도 그쪽은 CPU로 돈다 — 부분 가속):
+
+```bash
+docker run -d \
+  --name doc-parser-unstructured-hires \
+  --restart unless-stopped \
+  --gpus all \
+  -p 8081:8080 \
+  -e TZ=Asia/Seoul \
+  -e PROFILE=prod \
+  -e HIRES_MAX_CONCURRENCY=4 \
+  doc-parser-unstructured-hires:dev
+```
+
+헬스체크: `curl http://localhost:8081/health`
+
+전처리기 쪽 설정: k8s Service DNS가 없으니 `unstructured_hires.endpoint`에
+`http://<서버IP>:8081/partition` 처럼 실제 접근 가능한 주소를 기입. **이 파드는 옵션이 아니라 필수**
+— 로컬 폴백이 없으므로 endpoint 미설정 시 이미지/미지 확장자 처리가 `ValueError`로 즉시 실패한다.
+
+</details>
+
+</details>
+
+
+## 사용 방법
