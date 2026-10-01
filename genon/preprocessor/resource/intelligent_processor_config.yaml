@@ -78,7 +78,7 @@ layout:
     repetition_penalty: 1.15    # >1.0, 토큰 반복(degeneration) 억제
     length_fallback_enabled: true  # 폭주(finish_reason=length)/타임아웃 감지 시 layout_only 보정 on/off
     fallback_dpi: 200           # 보정 시 페이지 재렌더 DPI (dots.ocr 권장 200)
-    table_fallback_enabled: true   # dotsocr가 표 HTML을 못 준 빈 테이블을 TableFormer로 보강 (CPU ~1.7s/표)
+    table_fallback_enabled: true   # dotsocr가 표 HTML을 못 준 빈 테이블을 TableFormer 파드로 보강
 
 # PDF 파이프라인 (docling PDF 파싱 성능/품질 노브)
 pdf_pipeline:
@@ -88,6 +88,11 @@ pdf_pipeline:
   generate_page_images: true
   generate_picture_images: true      # false 면 이미지 설명 enrichment 비활성화됨
   table_structure_mode: "accurate"   # "accurate"(default) | "fast"
+  tableformer_remote:
+    # TableFormer(표 구조 인식)는 전처리기 파드 안에서 로드하지 않고 별도 파드로만 서빙된다.
+    # 빌드/배포: genon/serving/tableformer/README.md. 클러스터 내부 서비스 주소로 치환할 것.
+    endpoint: "http://<TABLEFORMER_ENDPOINT>/table/structure"
+    timeout: 60
 
 # table_image
 # 복잡 표 대응: 표를 picture 와 동일하게 이미지로 잘라 저장하고 media_files 에

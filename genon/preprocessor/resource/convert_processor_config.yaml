@@ -86,6 +86,11 @@ pdf_pipeline:
   generate_page_images: true
   generate_picture_images: true
   table_structure_mode: "accurate"   # "accurate"(default) | "fast"
+  tableformer_remote:
+    # TableFormer(표 구조 인식)는 전처리기 파드 안에서 로드하지 않고 별도 파드로만 서빙된다.
+    # 빌드/배포: genon/serving/tableformer/README.md. 클러스터 내부 서비스 주소로 치환할 것.
+    endpoint: "http://<TABLEFORMER_ENDPOINT>/table/structure"
+    timeout: 60
 
 # table_image
 # 복잡 표 대응: 표를 picture 와 동일하게 이미지로 잘라 저장하고 media_files 에
