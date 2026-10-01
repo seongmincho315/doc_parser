@@ -149,6 +149,10 @@ class DoclingRuntimeBase:
 
         ps.apply_layout_settings(self.pipe_line_options, _layout)
         docling_settings.perf.page_batch_size = _layout.page_batch_size
+        # 파생 facade 가 별도 PdfPipelineOptions()를 새로 만들 때(예: parser 의 PPT 경량 컨버터)
+        # 재사용한다 — 안 그러면 LayoutOptions 기본값(docling_layout, 로컬 GPU 모델)으로 떨어져서
+        # docling-ibm-models 없이는(genon/preprocessor 는 이제 안 깖) 즉시 죽는다.
+        self._layout_settings = _layout
 
         self.pipe_line_options.do_table_structure = True
         self.pipe_line_options.table_structure_options.do_cell_matching = True

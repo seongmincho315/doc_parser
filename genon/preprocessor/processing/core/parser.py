@@ -121,6 +121,7 @@ from genon.preprocessor.processing.common import loaders as ld
 from genon.preprocessor.processing.common import docling_ops as dops
 from genon.preprocessor.processing.common import parser_config as pcfg
 from genon.preprocessor.processing.common import pdf_artifact as pa
+from genon.preprocessor.processing.common import pipeline_setup as ps
 from genon.preprocessor.processing.serialize import parse_format as pf
 from genon.preprocessor.processing.common import runtime as rt
 from genon.preprocessor.processing.common import file_probe as fp
@@ -1347,6 +1348,10 @@ class ParserCore:
         if self._ppt_pdf_converter is not None:
             return self._ppt_pdf_converter
         opts = PdfPipelineOptions()
+        # LayoutOptions 기본값은 docling_layout(로컬 GPU 모델, docling-ibm-models 필요)이라
+        # 명시적으로 genos_layout(기본, 외부 API 위임)으로 맞춰준다 — 안 그러면 이 경량
+        # 컨버터가 PPT/PPTX 파싱 때마다 docling-ibm-models 를 찾다 죽는다.
+        ps.apply_layout_settings(opts, self._intel._layout_settings)
         opts.do_ocr = False
         opts.do_table_structure = False
         opts.generate_page_images = bool(self._page_desc_options.enabled)
