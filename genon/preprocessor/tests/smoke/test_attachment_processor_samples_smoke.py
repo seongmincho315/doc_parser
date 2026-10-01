@@ -34,9 +34,13 @@ def _collect_samples(exts: list[str]) -> list[Path]:
     return samples
 
 
-def _has_tesseract() -> bool:
-    # 시스템에 실제 tesseract 실행파일이 있는지 체크
-    return shutil.which("tesseract") is not None
+def _has_hires_endpoint(dp) -> bool:
+    """이미지/미지 확장자는 이제 unstructured hi_res 파드로만 처리된다(로컬 폴백 없음).
+    기본 yaml은 <UNSTRUCTURED_HIRES_ENDPOINT> 플레이스홀더 상태라, 실제 엔드포인트가
+    설정되지 않은 환경(CI 등)에서는 이미지 샘플 테스트를 스킵한다 — 예전의 로컬 tesseract
+    유무 체크(_has_tesseract)를 대체."""
+    endpoint = getattr(getattr(dp, "_hires", None), "endpoint", "")
+    return bool(endpoint) and "<" not in endpoint
 
 def _has_same_stem_other_ext(p: Path) -> bool:
     """
@@ -92,16 +96,17 @@ def test_vectors_created_for_samples(sample_path: Path):
     if sample_path.suffix.lower() == ".pdf" and _has_same_stem_other_ext(sample_path):
         pytest.skip(f"pdf has sibling with same stem: {sample_path.name}")
 
-    # 이미지인데 tesseract 없으면 스킵
-    if sample_path.suffix.lower() in IMAGE_EXTS and not _has_tesseract():
-        pytest.skip("tesseract not installed; skipping image sample test")
-
     DocumentProcessor, *_ = _import_processor()
 
     if not sample_path.exists():
         pytest.skip(f"sample not found: {sample_path}")
 
     dp = DocumentProcessor()
+
+    # 이미지는 이제 unstructured hi_res 파드로만 처리된다(로컬 폴백 없음) — 실제 엔드포인트가
+    # 설정 안 된 환경(CI 등)에서는 스킵.
+    if sample_path.suffix.lower() in IMAGE_EXTS and not _has_hires_endpoint(dp):
+        pytest.skip("unstructured_hires.endpoint not configured; skipping image sample test")
 
     async def _run():
         return await dp(_DummyRequest(), str(sample_path))

@@ -1,0 +1,56 @@
+# CPU 전용(YOLOX는 onnxruntime CPU로 충분히 빠르고, Table Transformer도 이미지당 표 개수만큼만
+# 가볍게 돎). GPU가 필요한 사이트는 resources.limits에 nvidia.com/gpu 추가하고
+# HIRES_MAX_CONCURRENCY를 낮춰 쓰면 됨(TableFormer 파드와 동일한 세마포어 방식).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: doc-parser-unstructured-hires-deployment
+  namespace: llmops
+  labels:
+    app: doc-parser-unstructured-hires
+spec:
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: doc-parser-unstructured-hires
+  template:
+    metadata:
+      labels:
+        app: doc-parser-unstructured-hires
+    spec:
+      serviceAccountName: llmops
+      containers:
+        - name: doc-parser-unstructured-hires
+          image: mncregistry:30500/doc-parser-unstructured-hires:0.0.0
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8080
+          env:
+            - name: TZ
+              value: Asia/Seoul
+            - name: PROFILE
+              value: prod
+            - name: HIRES_MAX_CONCURRENCY
+              value: "4"
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 20
+            periodSeconds: 15
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: doc-parser-unstructured-hires-service
+  namespace: llmops
+  labels:
+    app: doc-parser-unstructured-hires
+spec:
+  selector:
+    app: doc-parser-unstructured-hires
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080

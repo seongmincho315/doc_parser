@@ -21,6 +21,7 @@ _log = logging.getLogger(__name__)
 # 청크 크기, 토크나이저 경로)는 이 파일에 남아 있으므로 래퍼가 넘겨준다.
 from genon.preprocessor.processing.converters.md_math import guard_markdown
 from genon.preprocessor.processing.common import config_parse as cp
+from genon.preprocessor.processing.common import loaders as ld
 from genon.preprocessor.processing.enrichment.page_description import inject_page_descriptions
 from genon.preprocessor.processing.chunking import page_split
 from genon.preprocessor.processing.chunking import smart_chunker as sc
@@ -82,7 +83,7 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_community.document_loaders import (
     # TextLoader,                       # TXT
     UnstructuredPowerPointLoader,  # PPT and PPTX
-    UnstructuredFileLoader,  # Generic fallback
+    # 미지 확장자 fallback 은 unstructured hi_res 파드(ld.RemoteHiResLoader)로 처리한다.
 )
 # docling imports
 
@@ -355,6 +356,8 @@ class DocumentProcessor(DoclingRuntimeBase):
         여기서 세운 table_image_enabled / _page_desc_options 를 _force_page_images 가
         읽는다. 뒤로 옮기면 OCR 컨버터 옵션에 반영되지 않는다.
         """
+        # 미지 확장자 fallback은 unstructured hi_res 파드로만 서빙된다(torch 로컬 로딩 없음).
+        self._hires = ld.resolve_hires_settings(cfg)
         chunking_cfg = _as_dict(cfg.get("chunking"))
         formats_cfg = _as_dict(cfg.get("formats"))
         output_cfg = _as_dict(cfg.get("output"))
@@ -574,7 +577,11 @@ class DocumentProcessor(DoclingRuntimeBase):
             convert_to_pdf(file_path, use_pdf_sdk=use_pdf_sdk)
             return UnstructuredPowerPointLoader(file_path)
         else:
-            return UnstructuredFileLoader(file_path)
+            # 미지 확장자 fallback도 hi_res 파드로 보낸다(unstructured auto-partition이
+            # 이미지로 판별하는 입력이 여기로 흘러들어올 수 있음).
+            return ld.RemoteHiResLoader(
+                file_path, endpoint=self._hires.endpoint, timeout=self._hires.timeout,
+            )
 
     def load_documents_langchain(self, file_path: str, **kwargs: dict):
         """langchain으로 문서 로드"""

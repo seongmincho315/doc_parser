@@ -1,0 +1,26 @@
+[project]
+name = "doc-parser-unstructured-hires"
+version = "1.0.0"
+requires-python = ">=3.10,<4.0"
+description = "unstructured hi_res (YOLOX layout + Table Transformer table structure) serving"
+
+# unstructured/unstructured-inference/unstructured-pytesseract 버전은
+# doc-parser 본체(genon/preprocessor/pyproject.toml)와 고정 동기화한다 — 응답 스키마가
+# unstructured Element.to_dict()의 필드 구성에 묶여 있음.
+dependencies = [
+    "unstructured[image]==0.18.32",
+    "unstructured-inference>=1.2.0",
+    "unstructured-pytesseract==0.3.15",
+    "fastapi>=0.110,<1.0",
+    "uvicorn[standard]>=0.29,<1.0",
+    "python-multipart>=0.0.9",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.uv]
+package = false
+index-url = "https://pypi.org/simple"
+# paddle/tableformer와 달리 별도 wheel 인덱스가 필요 없다 — 전부 PyPI에서 설치됨.
