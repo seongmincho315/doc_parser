@@ -648,6 +648,11 @@ class DocumentProcessor(DoclingRuntimeBase):
         chunk_index_on_page = 0
         vectors = []
         upload_tasks = []
+        # 동일 이미지(PictureItem/표 이미지)가 여러 청크에 중복 참조되는 경우가 있어
+        # (헤더/캡션이 청크 경계에 걸치거나, 표가 여러 청크로 분할될 때),
+        # 중복 업로드를 막지 않으면 먼저 끝난 업로드가 원본 파일을 지운 뒤
+        # 나중 업로드의 os.remove 가 FileNotFoundError 로 문서 전체를 실패시킨다.
+        uploaded_media_paths: set[str] = set()
         for chunk_idx, chunk in enumerate(chunks):
             chunk_page = chunk.meta.doc_items[0].prov[0].page_no if chunk.meta.doc_items[0].prov else 0
             # 청크 선두에 섹션 경로 부착 (HEADER: ). 여기가 유일한 부착 지점이며,
@@ -698,9 +703,13 @@ class DocumentProcessor(DoclingRuntimeBase):
             chunk_index_on_page += 1
             if upload_files:
                 file_list = self.get_media_files(chunk.meta.doc_items, include_tables=self.table_image_enabled)
-                upload_tasks.append(asyncio.create_task(
-                    upload_files(file_list, request=request)
-                ))
+                # 이미 업로드 스케줄된 경로는 제외 (중복 업로드 방지)
+                file_list = [f for f in file_list if f["path"] not in uploaded_media_paths]
+                if file_list:
+                    uploaded_media_paths.update(f["path"] for f in file_list)
+                    upload_tasks.append(asyncio.create_task(
+                        upload_files(file_list, request=request)
+                    ))
 
         if upload_tasks:
             await asyncio.gather(*upload_tasks)

@@ -26,7 +26,11 @@ ARG HW_VARIANT=gpu
 ARG TORCH_CPU_INDEX_URL=https://download.pytorch.org/whl/cpu
 # 이슈 #199 후속 — rhwp 바이너리를 컨테이너에 직접 빌드해 넣기 위한 git ref
 ARG RHWP_GIT_URL=https://github.com/genonai/genos-rhwp.git
-ARG RHWP_GIT_REF=genos/main
+# 2026-10-07: genos/main(0.8.4, 2026-08-26 upstream 병합)은 국가법령정보센터 법령 .hwp(실제 HWPML 2.1 XML)를
+#   UNSUPPORTED_FILE_FORMAT 으로 거부 -> LibreOffice 폴백이 XML을 텍스트로 열어 BINDATA base64가 페이지에 찍힘
+#   (VLM 폭주 원인). 운영(0.7.15)과 같은 병합 전 스냅샷으로 고정한다. 브랜치를 따라가면 빌드 시점마다 바뀌므로
+#   올릴 때는 HWPML 2.1 샘플로 변환 확인 후 명시적으로 바꿀 것.
+ARG RHWP_GIT_REF=genos/pre-upstream-merge-20260826
 # 이슈 #286 — rhwp / LibreOffice 설치 여부 빌드 플래그 (true | false).
 #   INSTALL_LIBREOFFICE=false → LibreOffice/Java apt 패키지 및 H2Orestart 확장 미설치.
 #   INSTALL_RHWP=false        → rhwp 바이너리 빌드/포함 안 함 (Rust 빌드 stage 자체를 건너뜀).
