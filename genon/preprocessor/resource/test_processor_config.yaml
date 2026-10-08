@@ -8,7 +8,19 @@ conversion:
 models:
   dpi: 200                     # 페이지 렌더링 해상도(크롭 원본)
 
-  # 레이아웃은 항상 MinerU. vllm serve opendatalab/MinerU2.5-Pro-2605-1.2B (+ MinerULogitsProcessor)
+  # 레이아웃 백엔드: mineru (1036px 리사이즈, 블록 약 30종, 차트/그림·캡션 종류·회전 구분)
+  #                | dots (dots.mocr layout_only, 원본 해상도, 11종 -> 차트도 image, 캡션은 caption 하나)
+  layout_backend: "mineru"
+
+  # dots.mocr (layout_backend: dots 일 때만). 개발 서버 26001 은 김성헌 수석 서빙(GPU 0).
+  dots:
+    endpoint: "http://192.168.75.174:26001"
+    model: "dots-mocr"
+    max_concurrency: 16
+    timeout: 300
+    max_tokens: 8192
+
+  # 인식(+ 레이아웃 기본값) MinerU. vllm serve opendatalab/MinerU2.5-Pro-2605-1.2B (+ MinerULogitsProcessor)
   mineru:
     endpoint: "http://192.168.75.174:18300"
     model: "opendatalab/MinerU2.5-Pro-2605-1.2B"
@@ -23,12 +35,34 @@ models:
     timeout: 600
     max_tokens: 4096
 
+  # PP-OCRv5 (PaddleX OCR 서빙, POST /ocr). text_backend 가 ppocr 일 때 필요,
+  # table_backend 가 tableformer 면 텍스트 레이어 없는 표의 셀 텍스트(단어 박스)용으로 쓴다(없으면 그 표는 mineru).
+  ppocr:
+    endpoint: "http://192.168.73.172:48080/ocr"
+    max_concurrency: 16
+    timeout: 60
+
   # 영역별 인식 백엔드
-  text_backend: "mineru"       # mineru | paddle   (텍스트·제목·머리말·캡션·각주·코드·수식)
-  table_backend: "mineru"      # mineru | paddle | tableformer (tableformer 실패/텍스트 레이어 없음 -> mineru 폴백)
+  text_backend: "paddle"       # mineru | paddle | ppocr  (텍스트·제목·머리말·캡션·각주·코드·수식, ppocr 이면 수식만 mineru)
+  table_backend: "tableformer"      # mineru | paddle | tableformer (셀 텍스트: 텍스트 레이어 -> ppocr, 실패 표만 mineru)
+  # 그림/차트 (가로·세로 10% 초과 또는 면적 1% 초과만. 작은 아이콘·로고는 건너뜀)
+  image_backend: "mineru_vlm"  # none | mineru(Image Analysis: 영어 설명+표/mermaid) | vlm(image_vlm 한국어 설명)
+                               # | mineru_vlm(MinerU 표/mermaid/글자 + image_vlm 한국어 설명)
+  chart_backend: "mineru_vlm"  # none | mineru | paddle(Chart Recognition: 데이터 표, 축 라벨이 잘리는 경우 있음) | vlm(차트 프롬프트) | mineru_vlm
+
+  # image_backend/chart_backend 가 vlm 일 때만. OpenAI 호환 chat/completions 전체 주소(GenOS 서빙 게이트웨이).
+  image_vlm:
+    url: "http://llmops-gateway-api-service:8080/rep/serving/752/v1/chat/completions"                    # 예: https://<genos>/api/gateway/rep/serving/<IMAGE_SERVING_ID>/v1/chat/completions
+    api_key: ""
+    model: "model"
+    max_concurrency: 16
+    timeout: 120
+    max_tokens: 1024
+    context_chars: 300         # 프롬프트에 넣는 앞/뒤 문맥 글자 수
 
   tableformer:
     endpoint: "http://192.168.75.174:8080/table/structure"
+    max_concurrency: 4         # TableFormer 파드 동시 요청 수(페이지 단위)
     timeout: 60
 
 chunking:
