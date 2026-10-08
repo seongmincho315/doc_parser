@@ -362,13 +362,8 @@ def split_at_tables(text: str) -> list:
 
 
 def _retrieval_label() -> str:
-    """`[표 검색 설명]` 블록 라벨. 원본은 enrichment 쪽 한 곳뿐이다."""
-    try:
-        from genon.preprocessor.processing.enrichment.table_description import (
-            TABLE_RETRIEVAL_LABEL,
-        )
-    except Exception:      # 라벨을 못 읽으면 설명 이동만 생략한다(분리 자체는 유효하다)
-        return ""
+    """`[표 검색 설명]` 블록 라벨. 원본은 chunking/table_annotations 한 곳뿐이다."""
+    from genon.preprocessor.processing.chunking.table_annotations import TABLE_RETRIEVAL_LABEL
     return TABLE_RETRIEVAL_LABEL
 
 

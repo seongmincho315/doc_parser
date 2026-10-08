@@ -55,7 +55,7 @@ from genon.preprocessor.processing.chunking.table_variants import TableTextVaria
 from genon.preprocessor.processing.common import config_parse as cp
 from genon.preprocessor.processing.common.doc_meta import strip_enricher_meta
 from genon.preprocessor.processing.common.markdown_export import export_markdown
-from genon.preprocessor.processing.enrichment.table_description import (
+from genon.preprocessor.processing.chunking.table_annotations import (
     TableDescriptionExtractor,
     refined_html_to_format,
 )

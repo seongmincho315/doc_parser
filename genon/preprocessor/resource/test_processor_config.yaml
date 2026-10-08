@@ -1,0 +1,39 @@
+# test_processor (facade/test_processor.py) 설정.
+# GenOS 에서는 MinIO <preprocessor_id>/resource/ 에 올리면 /app/resource/ 로 내려온다.
+
+conversion:
+  # pdf_sdk(유료 HWP SDK)는 standard 이미지에 없다 -> rhwp -> LibreOffice 순으로 변환.
+  use_pdf_sdk: false
+
+models:
+  dpi: 200                     # 페이지 렌더링 해상도(크롭 원본)
+
+  # 레이아웃은 항상 MinerU. vllm serve opendatalab/MinerU2.5-Pro-2605-1.2B (+ MinerULogitsProcessor)
+  mineru:
+    endpoint: "http://192.168.75.174:18300"
+    model: "opendatalab/MinerU2.5-Pro-2605-1.2B"
+    max_concurrency: 64
+    timeout: 600
+
+  # PaddleOCR-VL (vllm serve PaddlePaddle/PaddleOCR-VL-1.6). text_backend/table_backend 가 paddle 일 때만 필요.
+  paddle:
+    endpoint: "http://192.168.75.174:18400"
+    model: "PaddlePaddle/PaddleOCR-VL-1.6"
+    max_concurrency: 64
+    timeout: 600
+    max_tokens: 4096
+
+  # 영역별 인식 백엔드
+  text_backend: "mineru"       # mineru | paddle   (텍스트·제목·머리말·캡션·각주·코드·수식)
+  table_backend: "mineru"      # mineru | paddle | tableformer (tableformer 실패/텍스트 레이어 없음 -> mineru 폴백)
+
+  tableformer:
+    endpoint: "http://192.168.75.174:8080/table/structure"
+    timeout: 60
+
+chunking:
+  chunk_size: 1024
+  chunk_mode: "split_only"     # split_only | resize_all
+  include_chunk_header: true
+  table_as_chunk: true
+  tokenizer_type: "char"       # char | huggingface
