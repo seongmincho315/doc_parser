@@ -629,6 +629,8 @@ class ParsedPage:
     height: float
     image: Image.Image
     blocks: list[dict] = field(default_factory=list)
+    # PDF 텍스트 레이어 블록 [(x0, y0, x1, y1, text)] (0~1 정규화). 그림 VLM 문맥용, vlm 백엔드일 때만 채운다
+    text_blocks: list[tuple] = field(default_factory=list)
 
 
 def render_pages(pdf_path: str, dpi: int) -> list[ParsedPage]:
@@ -645,6 +647,26 @@ def render_pages(pdf_path: str, dpi: int) -> list[ParsedPage]:
                 )
             )
     return pages
+
+
+def page_text_blocks(pdf_path: str) -> list[list[tuple]]:
+    """페이지별 PDF 텍스트 레이어 블록 (0~1 정규화 bbox, 읽기 순서). 스캔본이면 빈 리스트."""
+    out = []
+    with pymupdf.open(pdf_path) as doc:
+        for page in doc:
+            w, h = page.rect.width, page.rect.height
+            blocks = [
+                (x0 / w, y0 / h, x1 / w, y1 / h, text.strip())
+                for x0, y0, x1, y1, text, _no, kind in page.get_text("blocks", sort=True)
+                if kind == 0 and text.strip()
+            ]
+            out.append(blocks)
+    return out
+
+
+def _center_in(t: tuple, bbox: list[float]) -> bool:
+    cx, cy = (t[0] + t[2]) / 2, (t[1] + t[3]) / 2
+    return bbox[0] <= cx <= bbox[2] and bbox[1] <= cy <= bbox[3]
 
 
 class Parser:
@@ -757,61 +779,75 @@ class Parser:
                 self._recognize(client, p, b)
                 for p in pages
                 for b in p.blocks
-                if b["type"] in _PICTURE_TYPES and self._picture_backend(b) in ("mineru", "paddle", "mineru_vlm")
+                if b["type"] in _PICTURE_TYPES and self._picture_backend(b) in ("mineru", "paddle")
             ]
+            # vlm/mineru_vlm: 문맥을 PDF 텍스트 레이어에서 가져오므로 텍스트 인식을 기다리지 않고 같이 돈다
+            vlm_pictures = [
+                (p, i)
+                for p in pages
+                for i, b in enumerate(p.blocks)
+                if b["type"] in _PICTURE_TYPES and self._picture_backend(b) in ("vlm", "mineru_vlm")
+            ]
+            if vlm_pictures:
+                for page, blocks in zip(pages, await asyncio.to_thread(page_text_blocks, pdf_path)):
+                    page.text_blocks = blocks
+                jobs += [self._describe(client, p, i) for p, i in vlm_pictures]
             if use_tf:
                 jobs += [
                     self._tableformer_page(client, pdf_path, p) for p in pages if any(b["type"] == "table" for b in p.blocks)
                 ]
             await asyncio.gather(*jobs)
-            # vlm 은 앞뒤 문맥(인식된 텍스트)을 프롬프트에 넣으므로 텍스트 인식 뒤에 돈다
-            await asyncio.gather(
-                *[
-                    self._describe(client, p, i)
-                    for p in pages
-                    for i, b in enumerate(p.blocks)
-                    if b["type"] in _PICTURE_TYPES and self._picture_backend(b) in ("vlm", "mineru_vlm")
-                ]
-            )
         _log.info("[parse] %s pages=%d blocks=%d", pdf_path, len(pages), sum(len(p.blocks) for p in pages))
         return pages
 
+    def _layer_text(self, page: ParsedPage, bbox: list[float]) -> str:
+        return "\n".join(t[4] for t in page.text_blocks if _center_in(t, bbox))
+
+    def _picture_context(self, page: ParsedPage, idx: int) -> dict:
+        """프롬프트 문맥(앞/뒤 글, 캡션, 섹션 제목)을 PDF 텍스트 레이어에서 만든다.
+
+        인식 결과를 기다리지 않으려고 텍스트 레이어를 쓴다(스캔본이면 비어서 "(없음)" 이 된다).
+        그림 위쪽(중심 y < 그림 top)은 앞 문맥, 나머지(그림 안 제외)는 뒤 문맥이다.
+        """
+        block = page.blocks[idx]
+        top = block["bbox"][1]
+        # 그림 안 글자, 캡션(따로 넣는다), 머리말·꼬리말 위치의 글자는 앞뒤 문맥에서 뺀다
+        skip = [block["bbox"]] + [b["bbox"] for b in page.blocks if b["type"] in _CAPTION_TYPES or b["type"] in _FURNITURE]
+        outside = [t for t in page.text_blocks if not any(_center_in(t, bb) for bb in skip)]
+        n = self.image_context_chars
+        near = page.blocks[max(0, idx - 2) : idx + 3]
+        heading = next((b for b in reversed(page.blocks[:idx]) if b["type"] in _TITLE_TYPES), None)
+        return {
+            "before_context": "\n".join(t[4] for t in outside if (t[1] + t[3]) / 2 < top)[-n:],
+            "after_context": "\n".join(t[4] for t in outside if (t[1] + t[3]) / 2 >= top)[:n],
+            "caption": "\n".join(self._layer_text(page, b["bbox"]) for b in near if b["type"] in _CAPTION_TYPES),
+            "section_header": self._layer_text(page, heading["bbox"]) if heading else "",
+        }
+
     async def _describe(self, client, page: ParsedPage, idx: int):
-        """그림 크롭 + 같은 페이지 앞뒤 텍스트·캡션으로 외부 VLM 에 한국어 설명을 받는다."""
+        """그림 크롭 + 텍스트 레이어 문맥으로 외부 VLM 한국어 설명. mineru_vlm 이면 MinerU 내용 분석을 동시에 돌려 합친다."""
         block = page.blocks[idx]
         crop = crop_block(page.image, block)
         if crop is None:
             return
-
-        def _texts(blocks):
-            return [
-                (b.get("content") or "").strip()
-                for b in blocks
-                if b["type"] not in _PICTURE_TYPES | _CAPTION_TYPES.union(_FURNITURE) and (b.get("content") or "").strip()
-            ]
-
-        n = self.image_context_chars
-        near = page.blocks[max(0, idx - 2) : idx + 3]
-        heading = next(
-            (b.get("content") for b in reversed(page.blocks[:idx]) if b["type"] in _TITLE_TYPES and b.get("content")), ""
-        )
-        values = {
-            "before_context": "\n".join(_texts(page.blocks[:idx]))[-n:],
-            "after_context": "\n".join(_texts(page.blocks[idx + 1 :]))[:n],
-            "caption": "\n".join((b.get("content") or "").strip() for b in near if b["type"] in _CAPTION_TYPES),
-            "section_header": heading.strip(),
-        }
-        # 차트 프롬프트는 데이터를 표로 뽑게 한다. mineru_vlm 은 표를 MinerU 가 이미 냈으므로 설명 프롬프트만 쓴다(표 중복 방지).
-        chart_prompt = block["type"] == "chart" and self._picture_backend(block) == "vlm"
-        template = self.chart_prompt if chart_prompt else self.image_prompt
+        backend = self._picture_backend(block)
+        # 차트 프롬프트는 데이터를 표로 뽑게 한다. mineru_vlm 은 표를 MinerU 가 내므로 설명 프롬프트만 쓴다(표 중복 방지).
+        template = self.chart_prompt if block["type"] == "chart" and backend == "vlm" else self.image_prompt
+        values = self._picture_context(page, idx)
         prompt = _PROMPT_VAR_RE.sub(lambda m: values.get(m.group(1)) or "(없음)", template)
-        # mineru_vlm: 앞서 받아 둔 MinerU 내용(표/mermaid/글자) 앞에 VLM 설명을 붙인다
-        analysis = (block.get("content") or "").strip() if self._picture_backend(block) == "mineru_vlm" else ""
-        try:
-            description = (await self.image_vlm.ask(client, crop, prompt, {"temperature": 0.0})).strip()
-        except Exception as exc:  # noqa: BLE001  설명 실패는 MinerU 내용만 남기고 문서는 계속
-            _log.warning("[image_vlm] page=%d 그림 설명 실패: %s: %s", page.page_no, type(exc).__name__, exc)
-            description = ""
+
+        async def _vlm() -> str:
+            try:
+                return (await self.image_vlm.ask(client, crop, prompt, {"temperature": 0.0})).strip()
+            except Exception as exc:  # noqa: BLE001  설명 실패는 MinerU 내용만 남기고 문서는 계속
+                _log.warning("[image_vlm] page=%d 그림 설명 실패: %s: %s", page.page_no, type(exc).__name__, exc)
+                return ""
+
+        if backend == "mineru_vlm":  # MinerU 내용(표/mermaid/글자)은 _recognize 가 block["content"] 에 넣는다
+            description, _ = await asyncio.gather(_vlm(), self._recognize(client, page, block))
+        else:
+            description = await _vlm()
+        analysis = (block.get("content") or "").strip() if backend == "mineru_vlm" else ""
         block["content"] = "\n".join(v for v in (description, analysis) if v)
 
     async def _ppocr_words(self, client, page: ParsedPage, block: dict) -> list[tuple]:
