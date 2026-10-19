@@ -794,7 +794,9 @@ class Parser:
                 jobs += [self._describe(client, p, i) for p, i in vlm_pictures]
             if use_tf:
                 jobs += [
-                    self._tableformer_page(client, pdf_path, p) for p in pages if any(b["type"] == "table" for b in p.blocks)
+                    self._tableformer_page(client, pdf_path, p)
+                    for p in pages
+                    if any(b["type"] == "table" for b in p.blocks)
                 ]
             await asyncio.gather(*jobs)
         _log.info("[parse] %s pages=%d blocks=%d", pdf_path, len(pages), sum(len(p.blocks) for p in pages))
@@ -812,7 +814,9 @@ class Parser:
         block = page.blocks[idx]
         top = block["bbox"][1]
         # 그림 안 글자, 캡션(따로 넣는다), 머리말·꼬리말 위치의 글자는 앞뒤 문맥에서 뺀다
-        skip = [block["bbox"]] + [b["bbox"] for b in page.blocks if b["type"] in _CAPTION_TYPES or b["type"] in _FURNITURE]
+        skip = [block["bbox"]] + [
+            b["bbox"] for b in page.blocks if b["type"] in _CAPTION_TYPES or b["type"] in _FURNITURE
+        ]
         outside = [t for t in page.text_blocks if not any(_center_in(t, bb) for bb in skip)]
         n = self.image_context_chars
         near = page.blocks[max(0, idx - 2) : idx + 3]
@@ -1031,9 +1035,15 @@ class GenOSVectorMetaBuilder(vm.VectorMetaBuilderBase):
         self.file_path: Optional[str] = None
 
     def build(self) -> GenOSVectorMeta:
-        return GenOSVectorMeta.model_validate(
-            {**self.core_payload(), "title": self.title, "file_path": self.file_path, **self.extra_metadata}
-        )
+        payload = {
+            **self.core_payload(),
+            "title": self.title,
+            "created_date": self.created_date,
+            "appendix": self.appendix or "",  # !! appendix feature (2025-09-30, geonhee kim) !!
+            "file_path": self.file_path,
+            **self.extra_metadata,
+        }
+        return GenOSVectorMeta.model_validate(payload)
 
 
 class DocumentProcessor:
