@@ -273,10 +273,11 @@ _FURNITURE_TYPES = {"header": "header", "footer": "footer"}
 
 
 def node_text(node: dict) -> str:
-    """요소의 글자. content 가 없으면 자식(kids/list items)의 글자를 이어 붙인다."""
+    """요소의 글자. 자기 content 와 자식(kids/list items)의 글자를 모두 이어 붙인다."""
+    parts = []
     if node.get("content"):
-        return str(node["content"]).strip()
-    parts = [node_text(k) for k in node.get("kids", []) + node.get("list items", [])]
+        parts.append(str(node["content"]).strip())
+    parts += [node_text(k) for k in node.get("kids", []) + node.get("list items", [])]
     return " ".join(p for p in parts if p)
 
 
