@@ -38,6 +38,8 @@ dependencies = [
     'grpcio-tools',
     "fastapi>=0.115.12",
     "pymupdf>=1.26.4",
+    "liteparse>=2.16.0",         # facade/liteparse_processor (규칙 기반, wheel)
+    "opendataloader-pdf>=2.5.13", # facade/opendataloader_processor (Java 11+ 필요 — 이미지에 openjdk-21-jre)
     "pydub>=0.25.1",
     "langchain>=1.2.10",
     "langchain-core>=1.2.11",

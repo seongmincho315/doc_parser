@@ -989,11 +989,13 @@ dependencies = [
     { name = "langchain" },
     { name = "langchain-community" },
     { name = "langchain-core" },
+    { name = "liteparse" },
     { name = "markdown" },
     { name = "markdown2" },
     { name = "minio" },
     { name = "numpy" },
     { name = "opencv-python-headless" },
+    { name = "opendataloader-pdf" },
     { name = "openpyxl" },
     { name = "pandas" },
     { name = "pdf2image" },
@@ -1062,12 +1064,14 @@ requires-dist = [
     { name = "langchain", specifier = ">=1.2.10" },
     { name = "langchain-community", specifier = ">=0.4.1" },
     { name = "langchain-core", specifier = ">=1.2.11" },
+    { name = "liteparse", specifier = ">=2.16.0" },
     { name = "markdown", specifier = "==3.8.2" },
     { name = "markdown2", specifier = ">=2.5.4" },
     { name = "minio", specifier = "==7.2.20" },
     { name = "numpy", specifier = "==2.3.4" },
     { name = "numpy", specifier = ">=2.3.4" },
     { name = "opencv-python-headless", specifier = ">=4.11.0.86" },
+    { name = "opendataloader-pdf", specifier = ">=2.5.13" },
     { name = "openpyxl", specifier = ">=3.1.5" },
     { name = "pandas", specifier = ">=2.2" },
     { name = "pdf2image", specifier = "==1.17.0" },
@@ -2347,6 +2351,21 @@ wheels = [
 ]
 
 [[package]]
+name = "liteparse"
+version = "2.16.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/4c/eb/89c4842fd7e6ecaf5752707f9830a43cda9bb41d1d12bc8914d4d79d7e25/liteparse-2.16.0.tar.gz", hash = "sha256:3e9a23d6580fbd373a709559bc75b6639b494bf46b7559e8b05ee00b9c937d83", size = 582747, upload-time = "2026-10-12T20:13:14.183Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/9d/22/7a03ebe60bbd686f896e30fd0653727f08f5a30402682b1b5b425aaf17bc/liteparse-2.16.0-cp310-abi3-macosx_10_12_x86_64.whl", hash = "sha256:3613a9427c9298d485daa6bdffd5c11a8b8f55b4ac008e27ca0357f48297ca5f", size = 12708307, upload-time = "2026-10-12T20:12:56.562Z" },
+    { url = "https://files.pythonhosted.org/packages/b2/a5/1d17a610cac28d91ee068ee99da5451d50c1bf12ad641b980fa2eeaa912d/liteparse-2.16.0-cp310-abi3-macosx_11_0_arm64.whl", hash = "sha256:eeba58366851592efd2a19b8b6199bc979aadaa0014d36f314559462c1f88f89", size = 12113978, upload-time = "2026-10-12T20:12:59.055Z" },
+    { url = "https://files.pythonhosted.org/packages/2e/15/1f5c1f80b6005e046aeb9e2e810d6b72d32a57075d2843f1dfb5f7e7ca8d/liteparse-2.16.0-cp310-abi3-manylinux_2_28_aarch64.whl", hash = "sha256:3c9f125541823ab8c8efbede5c098ab8ea346196d269537cfca51d526e9bca1d", size = 13710326, upload-time = "2026-10-12T20:13:01.832Z" },
+    { url = "https://files.pythonhosted.org/packages/e2/1d/52cc5652d61af5f778a41ab5b61b0a0bde3f0a4de59bbd580affbac935da/liteparse-2.16.0-cp310-abi3-manylinux_2_28_x86_64.whl", hash = "sha256:f0323efe6c15202da48e32c4925b8f34bc0f6054de469beb91733fd47df1e9fb", size = 13961003, upload-time = "2026-10-12T20:13:04.164Z" },
+    { url = "https://files.pythonhosted.org/packages/07/8d/401212c378271b3d7dfeba15a4e814893a56f9cdda4acdaa94aea240f1bc/liteparse-2.16.0-cp310-abi3-musllinux_1_2_x86_64.whl", hash = "sha256:75776d5db272ea437516a1adc53a75fe8b0ffd9a66eb13f3af3b8389ffc3cd6f", size = 17143521, upload-time = "2026-10-12T20:13:06.942Z" },
+    { url = "https://files.pythonhosted.org/packages/dd/9d/bab011c345fc030e6af0e49601485ba7e75c8ccd50ff878f9a226b341930/liteparse-2.16.0-cp310-abi3-win_amd64.whl", hash = "sha256:9612fd22ef807c2bae241fa4c3012571d89ba8a25168350f5f56ed6ca295fb52", size = 12123384, upload-time = "2026-10-12T20:13:09.348Z" },
+    { url = "https://files.pythonhosted.org/packages/43/17/d5155fb4b01a2763ea7502b589daaa5a0ad284f9ff4cb99b7c5eca04de1f/liteparse-2.16.0-cp310-abi3-win_arm64.whl", hash = "sha256:530e2a5bc8ae3d91afbe2f7b48c0647289f520db3d2cc9f0b1558376dfece120", size = 11507126, upload-time = "2026-10-12T20:13:11.724Z" },
+]
+
+[[package]]
 name = "llvmlite"
 version = "0.46.0"
 source = { registry = "https://pypi.org/simple" }
@@ -2988,6 +3007,15 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/9b/21/f6ef335f6e65724aa78b8d792b48d40a48c381715f1e62f5a5049e09d07e/opencv_python_headless-5.0.0.93-cp37-abi3-manylinux_2_28_x86_64.whl", hash = "sha256:ed709fdf9aa0bd1f2ed8549e71d19449b03a675bb581eb292285f6861953be37", size = 61204038, upload-time = "2026-07-02T06:56:41.823Z" },
     { url = "https://files.pythonhosted.org/packages/d0/8f/b8756467ea991449a293797f6b3fa80fcfdd29598a0a60d1cd5715b96e61/opencv_python_headless-5.0.0.93-cp37-abi3-win32.whl", hash = "sha256:c6bcd96b185975ea240d22cfdb15a1f6d080cc95264cfbe2621f21bb144d89b9", size = 35411237, upload-time = "2026-07-02T05:50:12.901Z" },
     { url = "https://files.pythonhosted.org/packages/b8/88/763b967f7efd7226b82c9fae16d560cba049b1f0c036647e65c610fd636e/opencv_python_headless-5.0.0.93-cp37-abi3-win_amd64.whl", hash = "sha256:829717b6a95554f273e49e357cee3b3a2a26b6f4842fbc1bed2b45bdd8f87e0e", size = 43825962, upload-time = "2026-07-02T05:50:09.627Z" },
+]
+
+[[package]]
+name = "opendataloader-pdf"
+version = "2.5.13"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/49/0c/a187aff1ec689fe7a445d9c2ad629867cc5567738f1629f20c41833410e5/opendataloader_pdf-2.5.13.tar.gz", hash = "sha256:86ea33c936e7ee5577c0e66582da3c2ae59eae83de44d9758e25e4fbc6f6cf02", size = 22635179, upload-time = "2026-10-13T03:48:02.743Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/ee/52/07666c3511ee926f5bb0412394d7a937d6a592f0f462356f1be91a3cad8a/opendataloader_pdf-2.5.13-py3-none-any.whl", hash = "sha256:c60640bb33172ea83f35395da3277b18d575206337e2b56ceecea2c1f44e08ed", size = 22647144, upload-time = "2026-10-13T03:47:59.769Z" },
 ]
 
 [[package]]

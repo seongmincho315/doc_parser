@@ -6,7 +6,11 @@ conversion:
 
 models:
   dpi: 200                     # 그림 크롭 원본 렌더링 해상도
-  opendataloader: {}           # convert() 추가 옵션 (use_struct_tree: true 등)
+  opendataloader:
+    java_max_heap: "8g"        # JVM 최대 힙. 기본(컨테이너의 25%=4GiB)은 벡터 도형 많은 페이지에서 OOM (실측 4g OOM, 8g 성공)
+    max_concurrent_jvm: 2      # 동시에 뜨는 JVM 수(gunicorn 워커 전체 합). 문서당 최대 6GB 안팎이라 16Gi 파드에서 너무 크게 잡지 말 것
+    timeout: 600               # JVM 1회 실행 제한(초)
+    # use_struct_tree: true    # 그 밖의 CLI 옵션은 키를 그대로 (밑줄은 하이픈으로 변환해 전달)
 
 chunking:
   chunk_size: 1024
