@@ -1037,6 +1037,8 @@ class GenOSVectorMetaBuilder(vm.VectorMetaBuilderBase):
     def __init__(self):
         super().__init__()
         self.title: Optional[str] = None
+        self.created_date: Optional[int] = None
+        self.appendix: Optional[str] = None
         self.file_path: Optional[str] = None
 
     def build(self) -> GenOSVectorMeta:
