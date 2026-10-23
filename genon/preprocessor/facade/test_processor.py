@@ -8,8 +8,8 @@ mineru-vl-utils 는 이미지에 없으므로 2단계 호출을 아래에 직접
 파이프라인 (모델은 전부 HTTP 호출):
   1. 변환   : PDF 가 아니면 PDF 로 (hwp/hwpx -> rhwp, 그 외 -> LibreOffice)
   2. 레이아웃: MinerU2.5 VLM 또는 dots.mocr layout_only (페이지 -> 블록 bbox/type, layout_backend)
-  3. 인식   : 블록 크롭을 type 별 백엔드로 -- 텍스트: mineru|paddle|ppocr, 표: mineru|paddle|tableformer,
-              수식: mineru (paddle 이면 paddle, ppocr 이면 mineru), 그림: none|mineru(Image Analysis)|vlm(외부 VLM 설명)|mineru_vlm(MinerU 내용 + VLM 설명),
+  3. 인식   : 블록 크롭을 type 별 백엔드로 -- 텍스트: mineru|paddle|ppocr|glm, 표: mineru|paddle|tableformer,
+              수식: mineru (paddle 이면 paddle, ppocr·glm 이면 mineru), 그림: none|mineru(Image Analysis)|vlm(외부 VLM 설명)|mineru_vlm(MinerU 내용 + VLM 설명),
               차트: 그림 값 + paddle(Chart Recognition).
               묶음 블록(list 등)은 인식하지 않는다.
               tableformer 표의 셀 텍스트는 PDF 텍스트 레이어 단어, 없으면 PP-OCR 단어 박스. 실패한 표만 MinerU.
@@ -681,6 +681,7 @@ class Parser:
             raise ValueError("layout_backend 가 dots 인데 dots.endpoint 가 없습니다")
         self.paddle = VlmServer(cfg["paddle"]) if cfg.get("paddle", {}).get("endpoint") else None
         self.ppocr = PpOcrServer(cfg["ppocr"]) if cfg.get("ppocr", {}).get("endpoint") else None
+        self.glm = VlmServer(cfg["glm"]) if cfg.get("glm", {}).get("endpoint") else None
         self.text_backend = str(cfg.get("text_backend", "mineru")).lower()
         self.table_backend = str(cfg.get("table_backend", "mineru")).lower()
         self.image_backend = str(cfg.get("image_backend", "none")).lower()
@@ -698,6 +699,8 @@ class Parser:
             raise ValueError("text_backend/table_backend 가 paddle 인데 paddle.endpoint 가 없습니다")
         if self.text_backend == "ppocr" and self.ppocr is None:
             raise ValueError("text_backend 가 ppocr 인데 ppocr.endpoint 가 없습니다")
+        if self.text_backend == "glm" and self.glm is None:
+            raise ValueError("text_backend 가 glm 인데 glm.endpoint 가 없습니다")
         if self.image_backend not in ("none", "mineru", "vlm", "mineru_vlm"):
             raise ValueError(f"image_backend 는 none | mineru | vlm | mineru_vlm 입니다: {self.image_backend}")
         if self.chart_backend not in ("none", "mineru", "paddle", "vlm", "mineru_vlm"):
@@ -732,10 +735,12 @@ class Parser:
         backend = backend or (self.table_backend if kind == "table" else self.text_backend)
         if backend == "ppocr" and kind == "text":
             block["content"] = " ".join(t for t, _ in await self.ppocr.ocr(client, crop))
+        elif backend == "glm" and kind == "text":
+            block["content"] = await self.glm.ask(client, crop, "Text Recognition:", {"temperature": 0.0})
         elif backend == "paddle":
             prompt = {"table": "Table Recognition:", "equation": "Formula Recognition:"}.get(kind, "OCR:")
             block["content"] = await self.paddle.ask(client, crop, prompt, {"temperature": 0.0})
-        else:  # mineru (ppocr 의 수식, tableformer 실패 표도 여기로)
+        else:  # mineru (ppocr·glm 의 수식, tableformer 실패 표도 여기로)
             key = kind if kind in _MINERU_PROMPTS else "[default]"
             block["content"] = await self.mineru.ask(
                 client, crop, _MINERU_PROMPTS[key], _MINERU_SAMPLING[key], _MINERU_SYSTEM_PROMPT

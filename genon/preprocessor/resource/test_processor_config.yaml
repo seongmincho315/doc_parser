@@ -35,6 +35,14 @@ models:
     timeout: 600
     max_tokens: 4096
 
+  # GLM-OCR v6 에폭10 튜닝 (text_backend 가 glm 일 때만 필요. 수식은 mineru 로 간다).
+  glm:
+    endpoint: "http://192.168.75.174:18710"
+    model: "glmocr-v6-ep10"
+    max_concurrency: 64
+    timeout: 600
+    max_tokens: 4096
+
   # PP-OCRv5 (PaddleX OCR 서빙, POST /ocr). text_backend 가 ppocr 일 때 필요,
   # table_backend 가 tableformer 면 텍스트 레이어 없는 표의 셀 텍스트(단어 박스)용으로 쓴다(없으면 그 표는 mineru).
   ppocr:
@@ -43,7 +51,7 @@ models:
     timeout: 60
 
   # 영역별 인식 백엔드
-  text_backend: "paddle"       # mineru | paddle | ppocr  (텍스트·제목·머리말·캡션·각주·코드·수식, ppocr 이면 수식만 mineru)
+  text_backend: "glm"          # mineru | paddle | ppocr | glm  (텍스트·제목·머리말·캡션·각주·코드·수식, ppocr·glm 이면 수식은 mineru)
   table_backend: "tableformer"      # mineru | paddle | tableformer (셀 텍스트: 텍스트 레이어 -> ppocr, 실패 표만 mineru)
   # 그림/차트 (가로·세로 10% 초과 또는 면적 1% 초과만. 작은 아이콘·로고는 건너뜀)
   image_backend: "mineru_vlm"  # none | mineru(Image Analysis: 영어 설명+표/mermaid) | vlm(image_vlm 한국어 설명)
