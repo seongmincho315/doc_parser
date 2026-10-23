@@ -57,9 +57,12 @@ class LibreOfficeConverter:
                 candidates = [ascii_copy, in_path]
 
             timeout = int(os.environ.get("HWP_TO_PDF_TIMEOUT_SEC", DEFAULT_TIMEOUT_SEC))
+            # 워커(프로세스)마다 LibreOffice 프로필을 따로 쓴다. 기본 프로필을 여러 워커가 같이 쓰면
+            # 동시 변환 때 일부가 PDF 없이 조용히 끝난다.
+            profile_dir = Path(tempfile.gettempdir()) / f"lo_profile_{os.getpid()}"
             for cand in candidates:
                 cmd = [
-                    "soffice", "--headless",
+                    "soffice", f"-env:UserInstallation={profile_dir.as_uri()}", "--headless",
                     "--convert-to", convert_arg,
                     "--outdir", str(out_dir),
                     str(cand),
