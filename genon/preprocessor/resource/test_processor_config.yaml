@@ -54,9 +54,9 @@ models:
   text_backend: "glm"          # mineru | paddle | ppocr | glm  (텍스트·제목·머리말·캡션·각주·코드·수식, ppocr·glm 이면 수식은 mineru)
   table_backend: "tableformer"      # mineru | paddle | tableformer (셀 텍스트: 텍스트 레이어 -> ppocr, 실패 표만 mineru)
   # 그림/차트 (가로·세로 10% 초과 또는 면적 1% 초과만. 작은 아이콘·로고는 건너뜀)
-  image_backend: "mineru_vlm"  # none | mineru(Image Analysis: 영어 설명+표/mermaid) | vlm(image_vlm 한국어 설명)
+  image_backend: "mineru"  # none | mineru(Image Analysis: 영어 설명+표/mermaid) | vlm(image_vlm 한국어 설명)
                                # | mineru_vlm(MinerU 표/mermaid/글자 + image_vlm 한국어 설명)
-  chart_backend: "mineru_vlm"  # none | mineru | paddle(Chart Recognition: 데이터 표, 축 라벨이 잘리는 경우 있음) | vlm(차트 프롬프트) | mineru_vlm
+  chart_backend: "mineru"  # none | mineru | paddle(Chart Recognition: 데이터 표, 축 라벨이 잘리는 경우 있음) | vlm(차트 프롬프트) | mineru_vlm
 
   # image_backend/chart_backend 가 vlm 일 때만. OpenAI 호환 chat/completions 전체 주소(GenOS 서빙 게이트웨이).
   image_vlm:
