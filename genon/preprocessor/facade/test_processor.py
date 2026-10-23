@@ -125,10 +125,12 @@ async def _timed_await(stage: str, awaitable):
 
 def _log_stage_times(name: str, times: dict) -> None:
     """단계별 호출 수·합계·평균·최대. 호출이 병렬이라 합계는 실제 경과 시간(wall)보다 클 수 있다. wall 단계는 (wall) 로 표시."""
+    # 파드의 main.py 는 자기 로거에만 레벨을 주고 루트는 WARNING 이라 이 모듈의 _log.info 는 버려진다. print 로 남긴다.
     for stage, secs in sorted(times.items()):
-        _log.info(
-            "[timing] %s | %-28s n=%-4d sum=%7.2fs avg=%6.2fs max=%6.2fs",
-            name, stage, len(secs), sum(secs), sum(secs) / len(secs), max(secs),
+        print(
+            f"[timing] {name} | {stage:<28} n={len(secs):<4d} sum={sum(secs):7.2f}s "
+            f"avg={sum(secs) / len(secs):6.2f}s max={max(secs):6.2f}s",
+            flush=True,
         )
 
 
