@@ -34,7 +34,10 @@ import os
 import re
 import shutil
 import tempfile
+import time
 from collections import defaultdict
+from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -92,6 +95,41 @@ _CHUNK_PATH_SEP = " | "
 _CHUNK_PATH_MAX_LEAVES = 5
 _MIN_CHUNK_SIZE = 1024
 _DEFAULT_CONFIG = Path(__file__).resolve().parent.parent / "resource" / "test_processor_config.yaml"
+
+
+# ============================================================================ 단계별 소요 시간
+# 문서 하나(parse)마다 {단계: [초, ...]} 를 모아 끝에 한 번 로그로 남긴다. ContextVar 라 동시에 도는 문서끼리 섞이지 않고,
+# asyncio.gather 로 만든 태스크와 to_thread 가 같은 dict 를 본다.
+_STAGE_TIMES: ContextVar[Optional[dict]] = ContextVar("stage_times", default=None)
+
+
+def _record(stage: str, seconds: float) -> None:
+    times = _STAGE_TIMES.get()
+    if times is not None:
+        times.setdefault(stage, []).append(seconds)
+
+
+@contextmanager
+def _timed(stage: str):
+    t0 = time.perf_counter()
+    try:
+        yield
+    finally:
+        _record(stage, time.perf_counter() - t0)
+
+
+async def _timed_await(stage: str, awaitable):
+    with _timed(stage):
+        return await awaitable
+
+
+def _log_stage_times(name: str, times: dict) -> None:
+    """단계별 호출 수·합계·평균·최대. 호출이 병렬이라 합계는 실제 경과 시간(wall)보다 클 수 있다. wall 단계는 (wall) 로 표시."""
+    for stage, secs in sorted(times.items()):
+        _log.info(
+            "[timing] %s | %-28s n=%-4d sum=%7.2fs avg=%6.2fs max=%6.2fs",
+            name, stage, len(secs), sum(secs), sum(secs) / len(secs), max(secs),
+        )
 
 
 # ============================================================================ VLM 호출 공통
@@ -723,54 +761,70 @@ class Parser:
         btype = block["type"]
         if btype in _PICTURE_TYPES:
             picture_backend = self._picture_backend(block)
-            if picture_backend == "paddle":  # 차트 -> 데이터 표(markdown)
-                block["content"] = await self.paddle.ask(client, crop, "Chart Recognition:", {"temperature": 0.0})
-            else:  # mineru 이미지 분석(설명 + 표/mermaid/텍스트). mineru_vlm 은 내용만 받고 설명은 _describe 가 붙인다
-                out = await self.mineru.ask(
-                    client, crop, _MINERU_PROMPTS["image"], _MINERU_SAMPLING["image"], _MINERU_SYSTEM_PROMPT
-                )
-                block["content"] = image_analysis_text(out, caption=picture_backend != "mineru_vlm")
+            with _timed(f"{btype}:{picture_backend}"):
+                if picture_backend == "paddle":  # 차트 -> 데이터 표(markdown)
+                    block["content"] = await self.paddle.ask(client, crop, "Chart Recognition:", {"temperature": 0.0})
+                else:  # mineru 이미지 분석(설명 + 표/mermaid/텍스트). mineru_vlm 은 내용만 받고 설명은 _describe 가 붙인다
+                    out = await self.mineru.ask(
+                        client, crop, _MINERU_PROMPTS["image"], _MINERU_SAMPLING["image"], _MINERU_SYSTEM_PROMPT
+                    )
+                    block["content"] = image_analysis_text(out, caption=picture_backend != "mineru_vlm")
             return
         kind = "table" if btype == "table" else "equation" if btype == "equation" else "text"
         backend = backend or (self.table_backend if kind == "table" else self.text_backend)
-        if backend == "ppocr" and kind == "text":
-            block["content"] = " ".join(t for t, _ in await self.ppocr.ocr(client, crop))
-        elif backend == "glm" and kind == "text":
-            block["content"] = await self.glm.ask(client, crop, "Text Recognition:", {"temperature": 0.0})
-        elif backend == "paddle":
-            prompt = {"table": "Table Recognition:", "equation": "Formula Recognition:"}.get(kind, "OCR:")
-            block["content"] = await self.paddle.ask(client, crop, prompt, {"temperature": 0.0})
-        else:  # mineru (ppocr·glm 의 수식, tableformer 실패 표도 여기로)
-            key = kind if kind in _MINERU_PROMPTS else "[default]"
-            block["content"] = await self.mineru.ask(
-                client, crop, _MINERU_PROMPTS[key], _MINERU_SAMPLING[key], _MINERU_SYSTEM_PROMPT
-            )
+        # 실제로 호출되는 백엔드로 라벨을 단다(ppocr·glm 은 텍스트만 처리하고 수식은 mineru 로 간다)
+        used = "mineru" if backend in ("ppocr", "glm") and kind != "text" else backend
+        with _timed(f"{kind}:{used}"):
+            if backend == "ppocr" and kind == "text":
+                block["content"] = " ".join(t for t, _ in await self.ppocr.ocr(client, crop))
+            elif backend == "glm" and kind == "text":
+                block["content"] = await self.glm.ask(client, crop, "Text Recognition:", {"temperature": 0.0})
+            elif backend == "paddle":
+                prompt = {"table": "Table Recognition:", "equation": "Formula Recognition:"}.get(kind, "OCR:")
+                block["content"] = await self.paddle.ask(client, crop, prompt, {"temperature": 0.0})
+            else:  # mineru (ppocr·glm 의 수식, tableformer 실패 표도 여기로)
+                key = kind if kind in _MINERU_PROMPTS else "[default]"
+                block["content"] = await self.mineru.ask(
+                    client, crop, _MINERU_PROMPTS[key], _MINERU_SAMPLING[key], _MINERU_SYSTEM_PROMPT
+                )
 
     async def parse(self, pdf_path: str) -> list[ParsedPage]:
-        pages = await asyncio.to_thread(render_pages, pdf_path, self.dpi)
+        with _timed("render(wall)"):
+            pages = await asyncio.to_thread(render_pages, pdf_path, self.dpi)
         use_tf = self.table_backend == "tableformer" and bool(self.tf_endpoint)
         # vLLM(uvicorn) keep-alive 기본 5초 == httpx keepalive_expiry 기본 5초라, 쉬던 연결을 재사용하는 순간 서버가
         # 막 닫아 "Server disconnected without sending a response" 가 났다. 클라이언트가 먼저(2초) 버리게 한다.
         async with httpx.AsyncClient(limits=httpx.Limits(keepalive_expiry=2.0)) as client:
             if self.layout_backend == "dots":  # 원본 해상도(200dpi) 그대로. 서버가 smart_resize 한다
-                layouts = await asyncio.gather(
-                    *[self.dots.ask(client, p.image, _DOTS_LAYOUT_PROMPT, {"temperature": 0.0}) for p in pages]
-                )
+                with _timed("layout(wall)"):
+                    layouts = await asyncio.gather(
+                        *[
+                            _timed_await(
+                                "layout:dots",
+                                self.dots.ask(client, p.image, _DOTS_LAYOUT_PROMPT, {"temperature": 0.0}),
+                            )
+                            for p in pages
+                        ]
+                    )
                 for page, out in zip(pages, layouts):
                     page.blocks = parse_dots_layout_output(out, page.image.size)
             else:
-                layouts = await asyncio.gather(
-                    *[
-                        self.mineru.ask(
-                            client,
-                            p.image.resize(_LAYOUT_IMAGE_SIZE, Image.Resampling.BICUBIC),
-                            _MINERU_PROMPTS["[layout]"],
-                            _MINERU_SAMPLING["[layout]"],
-                            _MINERU_SYSTEM_PROMPT,
-                        )
-                        for p in pages
-                    ]
-                )
+                with _timed("layout(wall)"):
+                    layouts = await asyncio.gather(
+                        *[
+                            _timed_await(
+                                "layout:mineru",
+                                self.mineru.ask(
+                                    client,
+                                    p.image.resize(_LAYOUT_IMAGE_SIZE, Image.Resampling.BICUBIC),
+                                    _MINERU_PROMPTS["[layout]"],
+                                    _MINERU_SAMPLING["[layout]"],
+                                    _MINERU_SYSTEM_PROMPT,
+                                ),
+                            )
+                            for p in pages
+                        ]
+                    )
                 for page, out in zip(pages, layouts):
                     page.blocks = parse_layout_output(out)
             # tableformer 면 표는 페이지 단위로 TableFormer 에 보내고(텍스트 인식과 동시에), 실패한 표만 MinerU 로 간다.
@@ -794,7 +848,9 @@ class Parser:
                 if b["type"] in _PICTURE_TYPES and self._picture_backend(b) in ("vlm", "mineru_vlm")
             ]
             if vlm_pictures:
-                for page, blocks in zip(pages, await asyncio.to_thread(page_text_blocks, pdf_path)):
+                with _timed("text_layer(wall)"):
+                    text_layers = await asyncio.to_thread(page_text_blocks, pdf_path)
+                for page, blocks in zip(pages, text_layers):
                     page.text_blocks = blocks
                 jobs += [self._describe(client, p, i) for p, i in vlm_pictures]
             if use_tf:
@@ -803,7 +859,8 @@ class Parser:
                     for p in pages
                     if any(b["type"] == "table" for b in p.blocks)
                 ]
-            await asyncio.gather(*jobs)
+            with _timed("recognize(wall)"):
+                await asyncio.gather(*jobs)
         _log.info("[parse] %s pages=%d blocks=%d", pdf_path, len(pages), sum(len(p.blocks) for p in pages))
         return pages
 
@@ -847,7 +904,8 @@ class Parser:
 
         async def _vlm() -> str:
             try:
-                return (await self.image_vlm.ask(client, crop, prompt, {"temperature": 0.0})).strip()
+                with _timed(f"{block['type']}_describe:vlm"):
+                    return (await self.image_vlm.ask(client, crop, prompt, {"temperature": 0.0})).strip()
             except Exception as exc:  # noqa: BLE001  설명 실패는 MinerU 내용만 남기고 문서는 계속
                 _log.warning("[image_vlm] page=%d 그림 설명 실패: %s: %s", page.page_no, type(exc).__name__, exc)
                 return ""
@@ -876,24 +934,27 @@ class Parser:
         boxes = [tuple(v * s for v, s in zip(page.blocks[i]["bbox"], (page.width, page.height) * 2)) for i in idx]
         failed = list(idx)
         try:
-            png_b64, words = await asyncio.to_thread(tableformer_page_input, pdf_path, page.page_no, boxes)
+            with _timed("tableformer:input"):
+                png_b64, words = await asyncio.to_thread(tableformer_page_input, pdf_path, page.page_no, boxes)
             # 텍스트 레이어가 없는 표(스캔본, 이미지 표)는 PP-OCR 단어 박스를 토큰으로 쓴다. 회전 표는 MinerU 로 넘긴다.
             if self.ppocr is not None:
                 for k, i in enumerate(idx):
                     if not words[k] and page.blocks[i].get("angle", 0) == 0:
-                        words[k] = await self._ppocr_words(client, page, page.blocks[i])
+                        with _timed("tableformer:ppocr_words"):
+                            words[k] = await self._ppocr_words(client, page, page.blocks[i])
             sem = self._tf_sems.setdefault(id(asyncio.get_running_loop()), asyncio.Semaphore(self.tf_max_concurrency))
-            async with sem:
-                tables = await tableformer_tables(
-                    client,
-                    self.tf_endpoint,
-                    self.tf_timeout,
-                    png_b64,
-                    page.width,
-                    page.height,
-                    [w for ws in words for w in ws],
-                    boxes,
-                )
+            async with sem:  # 세마포어 대기는 빼고 서버 호출만 잰다
+                with _timed("table:tableformer"):
+                    tables = await tableformer_tables(
+                        client,
+                        self.tf_endpoint,
+                        self.tf_timeout,
+                        png_b64,
+                        page.width,
+                        page.height,
+                        [w for ws in words for w in ws],
+                        boxes,
+                    )
             failed = []
             for k, i in enumerate(idx):
                 data = tables[k] if k < len(tables) else None
@@ -1190,12 +1251,24 @@ class DocumentProcessor:
 
     async def __call__(self, request: Request, file_path: str, **kwargs):
         _log.info("file_path: %s kwargs: %s", file_path, kwargs)
-        pdf_path, converted_pdf_path = self._to_pdf(file_path)
+        times: dict = {}
+        _STAGE_TIMES.set(times)
+        t_start = time.perf_counter()
         try:
-            document = await self.load_document(pdf_path)
-        except Exception as exc:  # noqa: BLE001
-            raise GenosServiceException("1", f"파싱 실패: {exc}", stage="parse", error_type="transient") from exc
-        chunks = self.split_documents(document, **kwargs)
-        vectors = await self.compose_vectors(document, chunks, request, converted_pdf_path, **kwargs)
-        await self._upload_converted_pdf(converted_pdf_path, request, **kwargs)
-        return vectors
+            with _timed("convert(wall)"):
+                pdf_path, converted_pdf_path = self._to_pdf(file_path)
+            try:
+                with _timed("parse(wall)"):
+                    document = await self.load_document(pdf_path)
+            except Exception as exc:  # noqa: BLE001
+                raise GenosServiceException("1", f"파싱 실패: {exc}", stage="parse", error_type="transient") from exc
+            with _timed("chunk(wall)"):
+                chunks = self.split_documents(document, **kwargs)
+            with _timed("compose(wall)"):
+                vectors = await self.compose_vectors(document, chunks, request, converted_pdf_path, **kwargs)
+            with _timed("upload_pdf(wall)"):
+                await self._upload_converted_pdf(converted_pdf_path, request, **kwargs)
+            return vectors
+        finally:  # 실패해도 어디까지 걸렸는지 남긴다
+            times["total(wall)"] = [time.perf_counter() - t_start]
+            _log_stage_times(os.path.basename(file_path), times)
