@@ -600,6 +600,15 @@ def table_output_to_data(text: str) -> TableData:
 
 # ============================================================================ TableFormer 파드
 _TF_SCALE = 2.0  # 파드 쪽 가정(144dpi)과 같아야 한다
+# 크롭 둘레 여백(pt). 서버가 페이지를 높이 1024 로 줄일 때(INTER_AREA) 표 경계 픽셀이 주변 픽셀을 섞어 읽으므로,
+# 여백 없이 잘라 붙이면 경계가 흰 배경으로 바뀌어 모델 입력이 미세하게 달라진다.
+_TF_CROP_MARGIN_PT = 4
+
+
+def _tf_crop_box(bbox_pt) -> tuple[int, int, int, int]:
+    """표 bbox(pt) -> 크롭 영역(pt 정수, 여백 포함). 왼쪽·위는 페이지 밖으로 나가지 않게 0 으로 자른다."""
+    l, t, r, b = (round(v) for v in bbox_pt)
+    return max(0, l - _TF_CROP_MARGIN_PT), max(0, t - _TF_CROP_MARGIN_PT), r + _TF_CROP_MARGIN_PT, b + _TF_CROP_MARGIN_PT
 
 
 def _inside(word, bbox_pt) -> bool:
@@ -608,20 +617,35 @@ def _inside(word, bbox_pt) -> bool:
     return l <= cx <= r and t <= cy <= b
 
 
-def tableformer_page_input(pdf_path: str, page_no: int, bboxes_pt: list[tuple]) -> tuple[str, list[list[tuple]]]:
-    """TableFormer 입력 페이지 이미지(144dpi PNG base64)와 표별 PDF 텍스트 레이어 단어 [(x0, y0, x1, y1, text)] (pt)."""
+def tableformer_page_input(
+    pdf_path: str, page_no: int, bboxes_pt: list[tuple], crop_only: bool = True
+) -> tuple[str | list[str], list[list[tuple]]]:
+    """TableFormer 입력 이미지(144dpi PNG base64)와 표별 PDF 텍스트 레이어 단어 [(x0, y0, x1, y1, text)] (pt).
+
+    crop_only 면 표 영역(+여백)만 잘라 표별 PNG 리스트로, 아니면 페이지 전체 PNG 한 장으로 돌려준다. 크롭 영역은
+    _tf_crop_box 로 정하고, tableformer_tables 가 같은 값으로 서버에 붙일 위치를 알려준다.
+    """
+    matrix = pymupdf.Matrix(_TF_SCALE, _TF_SCALE)
     with pymupdf.open(pdf_path) as doc:
         page = doc[page_no - 1]
-        png = page.get_pixmap(matrix=pymupdf.Matrix(_TF_SCALE, _TF_SCALE)).tobytes("png")
+        if crop_only:
+            images = [
+                base64.b64encode(
+                    page.get_pixmap(matrix=matrix, clip=pymupdf.Rect(*_tf_crop_box(bb))).tobytes("png")
+                ).decode("ascii")
+                for bb in bboxes_pt
+            ]
+        else:
+            images = base64.b64encode(page.get_pixmap(matrix=matrix).tobytes("png")).decode("ascii")
         words = [tuple(w[:5]) for w in page.get_text("words") if w[4].strip()]
-    return base64.b64encode(png).decode("ascii"), [[w for w in words if _inside(w, bb)] for bb in bboxes_pt]
+    return images, [[w for w in words if _inside(w, bb)] for bb in bboxes_pt]
 
 
 async def tableformer_tables(
     client: httpx.AsyncClient,
     endpoint: str,
     timeout: float,
-    png_b64: str,
+    images: str | list[str],
     width: float,
     height: float,
     words: list[tuple],
@@ -638,14 +662,19 @@ async def tableformer_tables(
         }
         for idx, (x0, y0, x1, y1, text) in enumerate(words)
     ]
+    table_boxes = [[round(v) * _TF_SCALE for v in bb] for bb in bboxes_pt]
     payload = {
         "width": width * _TF_SCALE,
         "height": height * _TF_SCALE,
-        "image_b64": png_b64,
+        "image_b64": images if isinstance(images, str) else "",
         "tokens": tokens,
-        "table_bboxes": [[round(v) * _TF_SCALE for v in bb] for bb in bboxes_pt],
+        "table_bboxes": table_boxes,
         "do_matching": True,
     }
+    if not isinstance(images, str):  # 표 크롭만 보낸다(서버가 페이지 크기 캔버스에 bbox 위치로 붙인다)
+        payload["crops"] = [
+            {"bbox": [v * _TF_SCALE for v in _tf_crop_box(bb)], "image_b64": img} for bb, img in zip(bboxes_pt, images)
+        ]
     r = await client.post(endpoint, json=payload, timeout=timeout)
     r.raise_for_status()
     tables = []
@@ -734,6 +763,7 @@ class Parser:
         tf = cfg.get("tableformer", {})
         self.tf_endpoint, self.tf_timeout = tf.get("endpoint", ""), float(tf.get("timeout", 60))
         self.tf_max_concurrency = int(tf.get("max_concurrency", 4))
+        self.tf_send_crops = bool(tf.get("send_crops", True))  # False 면 페이지 전체를 보낸다(서버가 crops 를 모를 때)
         self._tf_sems: dict[int, asyncio.Semaphore] = {}
         if "paddle" in (self.text_backend, self.table_backend) and self.paddle is None:
             raise ValueError("text_backend/table_backend 가 paddle 인데 paddle.endpoint 가 없습니다")
@@ -937,7 +967,9 @@ class Parser:
         failed = list(idx)
         try:
             with _timed("tableformer:input"):
-                png_b64, words = await asyncio.to_thread(tableformer_page_input, pdf_path, page.page_no, boxes)
+                images, words = await asyncio.to_thread(
+                    tableformer_page_input, pdf_path, page.page_no, boxes, self.tf_send_crops
+                )
             # 텍스트 레이어가 없는 표(스캔본, 이미지 표)는 PP-OCR 단어 박스를 토큰으로 쓴다. 회전 표는 MinerU 로 넘긴다.
             if self.ppocr is not None:
                 for k, i in enumerate(idx):
@@ -951,7 +983,7 @@ class Parser:
                         client,
                         self.tf_endpoint,
                         self.tf_timeout,
-                        png_b64,
+                        images,
                         page.width,
                         page.height,
                         [w for ws in words for w in ws],

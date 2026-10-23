@@ -72,6 +72,7 @@ models:
     endpoint: "http://192.168.75.174:8080/table/structure"
     max_concurrency: 4         # TableFormer 파드 동시 요청 수(페이지 단위)
     timeout: 60
+    send_crops: true           # true: 표 영역 크롭만 전송, false: 페이지 전체 전송(서버가 crops 를 모르는 옛 버전일 때)
 
 chunking:
   chunk_size: 1024
