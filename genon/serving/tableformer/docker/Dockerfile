@@ -74,11 +74,14 @@ ARG APP_DIR
 ENV VIRTUAL_ENV=${APP_DIR}/.venv
 ENV PATH="${VIRTUAL_ENV}/bin:${PATH}"
 ENV TABLEFORMER_MODEL_ROOT=/models/docling-models
-# 기본값: accurate 모드 / auto 디바이스(GPU 있으면 사용) / 동시추론 1개(OOM 방지)
+# 기본값: accurate 모드 / auto 디바이스(GPU 있으면 사용)
+# 워커 2개(모델 2벌) x 워커당 배치 8표 / 묶음 대기 5ms. GPU 메모리는 워커당 약 1.5~2GB.
 ENV TABLEFORMER_MODE=accurate
 ENV TABLEFORMER_DEVICE=auto
 ENV TABLEFORMER_NUM_THREADS=8
-ENV TABLEFORMER_MAX_CONCURRENCY=1
+ENV TABLEFORMER_WORKERS=2
+ENV TABLEFORMER_MAX_BATCH=8
+ENV TABLEFORMER_BATCH_DELAY_MS=5
 
 WORKDIR ${APP_DIR}
 

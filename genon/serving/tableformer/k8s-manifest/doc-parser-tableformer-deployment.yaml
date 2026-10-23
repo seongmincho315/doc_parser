@@ -33,8 +33,12 @@ spec:
               value: accurate       # "accurate"(default) | "fast"
             - name: TABLEFORMER_DEVICE
               value: cuda           # 이 매니페스트는 GPU 전용. CPU만 쓰려면 -cpu.yaml 사용.
-            - name: TABLEFORMER_MAX_CONCURRENCY
-              value: "1"            # 동시 추론 1개로 직렬화 — GPU OOM 방지(CLAUDE.md TODO #1)
+            - name: TABLEFORMER_WORKERS
+              value: "2"            # uvicorn 워커 수. 워커마다 모델 한 벌(GPU 약 1.5~2GB)
+            - name: TABLEFORMER_MAX_BATCH
+              value: "8"            # 워커당 한 번에 모델에 넣는 표 수(GPU OOM 방지 상한 겸용)
+            - name: TABLEFORMER_BATCH_DELAY_MS
+              value: "5"            # 묶음을 기다리는 최대 시간. 요청이 1개면 이만큼만 기다리고 바로 처리
           resources:
             limits:
               nvidia.com/gpu: 1

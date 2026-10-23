@@ -36,8 +36,10 @@ spec:
               value: cpu
             - name: TABLEFORMER_NUM_THREADS
               value: "8"
-            - name: TABLEFORMER_MAX_CONCURRENCY
-              value: "1"
+            - name: TABLEFORMER_WORKERS
+              value: "1"            # CPU 는 연산이 병목이라 배치·워커를 늘려도 빨라지지 않는다(측정: 1.0배)
+            - name: TABLEFORMER_MAX_BATCH
+              value: "1"            # 1 = 표를 하나씩 처리(예전 동작과 같은 결과)
           livenessProbe:
             httpGet:
               path: /health
