@@ -1,0 +1,19 @@
+# liteparse_processor (facade/liteparse_processor.py) 설정. 규칙 기반 -- 모델 서버 호출 없음.
+# GenOS 에서는 MinIO <preprocessor_id>/resource/ 에 올리면 /app/resource/ 로 내려온다.
+
+conversion:
+  use_pdf_sdk: false
+
+models:
+  dpi: 200                     # 그림 크롭 원본 렌더링 해상도
+  liteparse:
+    ocr_enabled: false         # true 면 Tesseract(ocr_language: kor, tessdata 필요). 텍스트 레이어 없는 페이지만 OCR
+    # ocr_language: "kor"
+    # dpi: 150
+
+chunking:
+  chunk_size: 1024
+  chunk_mode: "split_only"     # split_only | resize_all
+  include_chunk_header: true
+  table_as_chunk: true
+  tokenizer_type: "char"       # char | huggingface
