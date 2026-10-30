@@ -7,7 +7,7 @@ mineru-vl-utils 는 이미지에 없으므로 2단계 호출을 아래에 직접
 
 파이프라인 (모델은 전부 HTTP 호출):
   1. 변환   : PDF 가 아니면 PDF 로 (hwp/hwpx -> rhwp, 그 외 -> LibreOffice)
-  2. 레이아웃: MinerU2.5 VLM 또는 dots.mocr layout_only (페이지 -> 블록 bbox/type, layout_backend)
+  2. 레이아웃: MinerU2.5 VLM | dots.mocr layout_only | PP-DocLayoutV2 검출 모델 (페이지 -> 블록 bbox/type, layout_backend)
   3. 인식   : 블록 크롭을 type 별 백엔드로 -- 텍스트: mineru|paddle|ppocr|glm, 표: mineru|paddle|tableformer,
               수식: mineru (paddle 이면 paddle, ppocr·glm 이면 mineru), 그림: none|mineru(Image Analysis)|vlm(외부 VLM 설명)|mineru_vlm(MinerU 내용 + VLM 설명),
               차트: 그림 값 + paddle(Chart Recognition).
@@ -455,6 +455,55 @@ def parse_dots_layout_output(output: str, image_size: tuple[int, int]) -> list[d
     return [b for i, b in enumerate(blocks) if i not in drop]
 
 
+# ---------------------------------------------------------------------------- PP-DocLayoutV2 레이아웃 (layout_backend: ppdoclayout)
+# bench_combo/pp_layout_server_v2.py 응답(boxes: 모델이 예측한 읽기 순서)을 MinerU 블록 타입으로.
+# V2 는 수식을 inline/display 로 나누지 않아(둘 다 "formula") 전부 equation 으로 둔다. 이름이 겹치는 id(header, footer, text)는 한 라벨로 온다.
+_PPDOC_TYPES = {
+    "text": "text", "content": "text", "abstract": "text",
+    "paragraph_title": "paragraph_title", "doc_title": "doc_title",
+    "reference": "ref_text", "reference_content": "ref_text", "footnote": "footnote", "vision_footnote": "image_footnote",
+    "header": "header", "footer": "footer", "number": "page_number", "aside_text": "aside_text",
+    "table": "table", "figure_title": "caption", "image": "image", "chart": "chart", "seal": "image",
+    "formula": "equation", "formula_number": "formula_number", "algorithm": "algorithm",
+}
+
+
+class PpLayoutServer:
+    """PP-DocLayoutV2 서빙(`POST /layout {"image": base64}` -> boxes). 서버가 동시 요청을 모아 배치로 forward 한다."""
+
+    def __init__(self, cfg: dict):
+        self.endpoint = cfg["endpoint"].rstrip("/")
+        if not self.endpoint.endswith("/layout"):
+            self.endpoint += "/layout"
+        self.timeout = float(cfg.get("timeout", 60))
+        self.max_concurrency = int(cfg.get("max_concurrency", 32))
+        self.threshold = cfg.get("threshold")  # 없으면 서버 기본값
+        self._sems: dict[int, asyncio.Semaphore] = {}
+
+    async def layout(self, client: httpx.AsyncClient, image: Image.Image) -> list[dict]:
+        sem = self._sems.setdefault(id(asyncio.get_running_loop()), asyncio.Semaphore(self.max_concurrency))
+        buf = io.BytesIO()
+        image.save(buf, "PNG")
+        body = {"image": base64.b64encode(buf.getvalue()).decode()}
+        if self.threshold is not None:
+            body["threshold"] = float(self.threshold)
+        async with sem:
+            r = await client.post(self.endpoint, json=body, timeout=self.timeout)
+        r.raise_for_status()
+        w, h = image.size
+        blocks = []
+        for b in r.json()["boxes"]:
+            btype = _PPDOC_TYPES.get(b["label"], "text")
+            x1, y1, x2, y2 = b["coordinate"][:4]
+            x1, x2 = sorted((min(max(x1 / w, 0.0), 1.0), min(max(x2 / w, 0.0), 1.0)))
+            y1, y2 = sorted((min(max(y1 / h, 0.0), 1.0), min(max(y2 / h, 0.0), 1.0)))
+            if x2 - x1 <= 0 or y2 - y1 <= 0:
+                continue
+            blocks.append({"type": btype, "bbox": [x1, y1, x2, y2], "angle": 0, "content": None})
+        drop = _covered(blocks, {"text", "equation"}, {"table"})
+        return [b for i, b in enumerate(blocks) if i not in drop]
+
+
 def _resize_by_need(image: Image.Image) -> Image.Image:
     if max(image.size) / min(image.size) > _MAX_IMAGE_EDGE_RATIO:
         w, h = image.size
@@ -744,8 +793,11 @@ class Parser:
         self.mineru = VlmServer(cfg["mineru"])
         self.layout_backend = str(cfg.get("layout_backend", "mineru")).lower()
         self.dots = VlmServer(cfg["dots"]) if cfg.get("dots", {}).get("endpoint") else None
-        if self.layout_backend not in ("mineru", "dots"):
-            raise ValueError(f"layout_backend 는 mineru | dots 입니다: {self.layout_backend}")
+        self.pp_layout = PpLayoutServer(cfg["pp_layout"]) if cfg.get("pp_layout", {}).get("endpoint") else None
+        if self.layout_backend not in ("mineru", "dots", "ppdoclayout"):
+            raise ValueError(f"layout_backend 는 mineru | dots | ppdoclayout 입니다: {self.layout_backend}")
+        if self.layout_backend == "ppdoclayout" and self.pp_layout is None:
+            raise ValueError("layout_backend 가 ppdoclayout 인데 pp_layout.endpoint 가 없습니다")
         if self.layout_backend == "dots" and self.dots is None:
             raise ValueError("layout_backend 가 dots 인데 dots.endpoint 가 없습니다")
         self.paddle = VlmServer(cfg["paddle"]) if cfg.get("paddle", {}).get("endpoint") else None
@@ -840,6 +892,13 @@ class Parser:
                     )
                 for page, out in zip(pages, layouts):
                     page.blocks = parse_dots_layout_output(out, page.image.size)
+            elif self.layout_backend == "ppdoclayout":  # 서버가 800x800 으로 리사이즈하므로 원본 그대로 보내고 좌표는 0~1 로 정규화
+                with _timed("layout(wall)"):
+                    layouts = await asyncio.gather(
+                        *[_timed_await("layout:ppdoclayout", self.pp_layout.layout(client, p.image)) for p in pages]
+                    )
+                for page, blocks in zip(pages, layouts):
+                    page.blocks = blocks
             else:
                 with _timed("layout(wall)"):
                     layouts = await asyncio.gather(
