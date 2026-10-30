@@ -54,7 +54,7 @@ models:
   # PP-OCRv5 (PaddleX OCR 서빙, POST /ocr). text_backend 가 ppocr 일 때 필요,
   # table_backend 가 tableformer 면 텍스트 레이어 없는 표의 셀 텍스트(단어 박스)용으로 쓴다(없으면 그 표는 mineru).
   ppocr:
-    endpoint: "http://192.168.73.172:48080/ocr"
+    endpoint: "http://192.168.75.174:18520/ocr"
     max_concurrency: 16
     timeout: 60
 
