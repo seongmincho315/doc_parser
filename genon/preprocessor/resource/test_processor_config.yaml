@@ -11,7 +11,7 @@ models:
   # 레이아웃 백엔드: mineru (1036px 리사이즈, 블록 약 30종, 차트/그림·캡션 종류·회전 구분)
   #                | dots (dots.mocr layout_only, 원본 해상도, 11종 -> 차트도 image, 캡션은 caption 하나)
   #                | ppdoclayout (PP-DocLayoutV2 검출 모델 + 읽기 순서, 25종 id, 800x800 리사이즈, 빠름)
-  layout_backend: "ppdoclayout"
+  layout_backend: "mineru"
 
   # dots.mocr (layout_backend: dots 일 때만). 개발 서버 26001 은 김성헌 수석 서빙(GPU 0).
   dots:
@@ -59,7 +59,7 @@ models:
     timeout: 60
 
   # 영역별 인식 백엔드
-  text_backend: "glm"          # mineru | paddle | ppocr | glm  (텍스트·제목·머리말·캡션·각주·코드·수식, ppocr·glm 이면 수식은 mineru)
+  text_backend: "mineru"          # mineru | paddle | ppocr | glm  (텍스트·제목·머리말·캡션·각주·코드·수식, ppocr·glm 이면 수식은 mineru)
   table_backend: "tableformer"      # mineru | paddle | tableformer (셀 텍스트: 텍스트 레이어 -> ppocr, 실패 표만 mineru)
   # 그림/차트 (가로·세로 10% 초과 또는 면적 1% 초과만. 작은 아이콘·로고는 건너뜀)
   image_backend: "mineru"  # none | mineru(Image Analysis: 영어 설명+표/mermaid) | vlm(image_vlm 한국어 설명)
